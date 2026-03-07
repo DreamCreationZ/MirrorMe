@@ -2,9 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { login, signup, waitForAuthInit } from "@/lib/auth";
+import { getCurrentUser, login, logout, signup, waitForAuthInit } from "@/lib/auth";
 import { loadProfile, saveProfile } from "@/lib/persistence";
-import { COUNTRY_OPTIONS, findCountryByIso } from "@/lib/location";
+import { COUNTRY_OPTIONS } from "@/lib/location";
 import { UserProfile } from "@/types/models";
 
 function uid() {
@@ -20,51 +20,56 @@ export default function LoginPage() {
   const [heightCm, setHeightCm] = useState(165);
   const [skinTone, setSkinTone] = useState("");
   const [stateName, setStateName] = useState("");
+  const [pincode, setPincode] = useState("");
   const [country, setCountry] = useState("");
   const [phoneCountryCode, setPhoneCountryCode] = useState("+91");
   const [mobileNumber, setMobileNumber] = useState("");
   const [status, setStatus] = useState("");
   const [locationStatus, setLocationStatus] = useState("");
-  const [locationAutoAttempted, setLocationAutoAttempted] = useState(false);
+  const [activeSessionName, setActiveSessionName] = useState("");
 
   useEffect(() => {
     waitForAuthInit().then(async (session) => {
       if (!session) return;
-      const profile = await loadProfile(session.id);
-      router.replace(profile ? "/occasion" : "/onboarding");
+      setActiveSessionName(session.name || getCurrentUser()?.name || "");
     });
-  }, [router]);
-
-  const autoDetectLocation = useCallback(async () => {
-    setLocationStatus("Detecting country and state...");
-    try {
-      const response = await fetch("https://ipapi.co/json/");
-      if (!response.ok) throw new Error("Location lookup failed.");
-      const data = (await response.json()) as {
-        country_code?: string;
-        country_name?: string;
-        region?: string;
-      };
-
-      const matched = findCountryByIso(data.country_code);
-      if (matched) {
-        setCountry(matched.name);
-        setPhoneCountryCode(matched.dialCode);
-      } else if (data.country_name) {
-        setCountry(data.country_name);
-      }
-      setStateName(data.region || "");
-      setLocationStatus("Detected location. You can edit if needed.");
-    } catch {
-      setLocationStatus("Could not auto-detect location. Please select manually.");
-    }
   }, []);
 
+  const detectLocationFromPincode = useCallback(async () => {
+    const normalized = pincode.trim();
+    if (normalized.length < 4) return;
+
+    setLocationStatus("Detecting country and state from pincode...");
+    try {
+      const res = await fetch(`/api/location/pincode?pincode=${encodeURIComponent(normalized)}`);
+      const data = (await res.json()) as {
+        state?: string;
+        countryName?: string;
+        phoneCountryCode?: string;
+        found?: boolean;
+      };
+      if (data?.found) {
+        if (data.state) setStateName(data.state);
+        if (data.countryName) setCountry(data.countryName);
+        if (data.phoneCountryCode) setPhoneCountryCode(data.phoneCountryCode);
+        setLocationStatus("Country and state detected from pincode.");
+      } else {
+        setLocationStatus("Could not detect location from pincode. Please enter country/state manually.");
+      }
+    } catch {
+      setLocationStatus("Could not detect location from pincode. Please enter country/state manually.");
+    }
+  }, [pincode]);
+
   useEffect(() => {
-    if (mode !== "signup" || locationAutoAttempted) return;
-    setLocationAutoAttempted(true);
-    void autoDetectLocation();
-  }, [autoDetectLocation, locationAutoAttempted, mode]);
+    if (mode !== "signup") return;
+    const normalized = pincode.trim();
+    if (normalized.length < 4) return;
+    const timer = setTimeout(() => {
+      void detectLocationFromPincode();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [detectLocationFromPincode, mode, pincode]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -81,6 +86,7 @@ export default function LoginPage() {
           skinTone: skinTone.trim(),
           country: country.trim(),
           state: stateName.trim(),
+          pincode: pincode.trim(),
           phoneCountryCode: phoneCountryCode.trim(),
           mobileNumber: mobileNumber.trim(),
           profession: "Not set",
@@ -101,6 +107,27 @@ export default function LoginPage() {
     <section className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
       <h1>{mode === "login" ? "Log In" : "Create Account"}</h1>
       <p className="small">Login is required to keep profile, closet, and stylist memory per user.</p>
+      {activeSessionName ? (
+        <div style={{ marginBottom: 12 }}>
+          <p className="small">Currently signed in as {activeSessionName}. You can continue, sign out, or switch account below.</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className="secondary" onClick={() => router.push("/occasion")}>
+              Continue
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={async () => {
+                await logout();
+                setActiveSessionName("");
+                setStatus("Signed out. You can now log in with another account.");
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <button className={mode === "login" ? "" : "secondary"} onClick={() => setMode("login")} type="button">Log In</button>
@@ -112,7 +139,7 @@ export default function LoginPage() {
           <>
             <label>
               Name
-              <input value={name} onChange={(e) => setName(e.target.value)} required />
+              <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} required />
             </label>
             <label>
               Height (cm)
@@ -121,12 +148,13 @@ export default function LoginPage() {
                 min={100}
                 value={heightCm}
                 onChange={(e) => setHeightCm(Number(e.target.value))}
+                className="auth-input"
                 required
               />
             </label>
             <label>
               Color / Skin tone
-              <input value={skinTone} onChange={(e) => setSkinTone(e.target.value)} required />
+              <input className="auth-input" value={skinTone} onChange={(e) => setSkinTone(e.target.value)} required />
             </label>
             <label>
               Country
@@ -138,6 +166,7 @@ export default function LoginPage() {
                   setCountry(nextCountry);
                   if (matched) setPhoneCountryCode(matched.dialCode);
                 }}
+                className="auth-input"
                 required
               >
                 <option value="">Select country</option>
@@ -150,11 +179,23 @@ export default function LoginPage() {
             </label>
             <label>
               State
-              <input value={stateName} onChange={(e) => setStateName(e.target.value)} required />
+              <input className="auth-input" value={stateName} onChange={(e) => setStateName(e.target.value)} required />
+            </label>
+            <label>
+              Pincode
+              <input
+                className="auth-input"
+                inputMode="numeric"
+                pattern="[0-9A-Za-z -]{4,12}"
+                value={pincode}
+                onChange={(e) => setPincode(e.target.value)}
+                onBlur={detectLocationFromPincode}
+                required
+              />
             </label>
             <label>
               Country code
-              <select value={phoneCountryCode} onChange={(e) => setPhoneCountryCode(e.target.value)} required>
+              <select className="auth-input" value={phoneCountryCode} onChange={(e) => setPhoneCountryCode(e.target.value)} required>
                 {Array.from(new Map(COUNTRY_OPTIONS.map((item) => [item.dialCode, item])).values()).map((item) => (
                   <option key={item.dialCode} value={item.dialCode}>
                     {item.dialCode}
@@ -170,24 +211,22 @@ export default function LoginPage() {
                 pattern="[0-9]{6,15}"
                 value={mobileNumber}
                 onChange={(e) => setMobileNumber(e.target.value.replace(/[^\d]/g, ""))}
+                className="auth-input"
                 required
               />
             </label>
-            <button type="button" className="secondary" onClick={autoDetectLocation}>
-              Auto Detect Country & State
-            </button>
             {locationStatus ? <p className="small">{locationStatus}</p> : null}
           </>
         ) : null}
 
         <label>
           Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
 
         <label>
           Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={4} />
+          <input className="auth-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={4} />
         </label>
 
         <button type="submit">{mode === "login" ? "Log In" : "Create and Continue"}</button>

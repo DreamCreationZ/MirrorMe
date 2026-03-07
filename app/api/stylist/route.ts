@@ -18,6 +18,7 @@ const schema = z.object({
       skinTone: z.string().optional(),
       country: z.string().optional(),
       state: z.string().optional(),
+      pincode: z.string().optional(),
       phoneCountryCode: z.string().optional(),
       mobileNumber: z.string().optional(),
       profession: z.string().optional(),
@@ -69,13 +70,44 @@ Personalization rules:
 - Always use saved profile details: height, skin tone, age, profession, style goals.
 - Factor the occasion in every judgment.
 - If images are provided, visually analyze them before giving verdict.
+- If user shares only one clothing piece (for example only a shirt/top), ask a clear follow-up for the missing pieces (bottom/footwear/accessories) before finalizing.
 - Also guide makeup honestly when user asks (base, lips, eyes, finish, shade direction).
 - If user asks non-fashion personal chat, answer warmly but keep stylist personality.
 - Reply in the user's language. If preferred language is set, prioritize that.
 Output format rules:
 - Return strict JSON only.
-- Keys must be exactly: verdict, confidence, whyThisWorks, alternatives, timeSavingTip, reply.
-- reply must end with: Verdict: NOT GOOD / GOOD / BEST`;
+- If user asks for outfit/fashion recommendation, keys must be exactly: verdict, confidence, whyThisWorks, alternatives, timeSavingTip, reply.
+- If user is doing normal conversation (not asking for styling decision), return only: { "reply": "..." } with natural conversational text and no verdict line.`;
+
+function isRecommendationQuery(text: string, hasImages: boolean) {
+  if (hasImages) return true;
+  const t = text.toLowerCase();
+  const keywords = [
+    "wear",
+    "outfit",
+    "dress",
+    "shirt",
+    "jeans",
+    "pants",
+    "trouser",
+    "saree",
+    "blouse",
+    "skirt",
+    "kurta",
+    "look",
+    "style",
+    "styling",
+    "shoe",
+    "sandal",
+    "accessory",
+    "makeup",
+    "festival",
+    "party",
+    "casual",
+    "wedding"
+  ];
+  return keywords.some((k) => t.includes(k));
+}
 
 function normalizeVerdict(value: unknown, replyText: string): "NOT GOOD" | "GOOD" | "BEST" {
   const upper = String(value || "").toUpperCase();
@@ -147,6 +179,11 @@ export async function POST(req: NextRequest) {
     const body = schema.parse(await req.json());
 
     const client = new OpenAI({ apiKey: key });
+    const lastUserMessage = [...body.messages].reverse().find((m) => m.role === "user");
+    const shouldRecommend = isRecommendationQuery(
+      lastUserMessage?.content || "",
+      Boolean(lastUserMessage?.images?.length)
+    );
     const contextSummary = {
       profile: body.profile ?? null,
       occasion: body.occasion ?? "casual",
@@ -155,7 +192,8 @@ export async function POST(req: NextRequest) {
       stylistName: body.stylistName || "Meera",
       conversationMode: body.conversationMode || "chat",
       preferredLanguage: body.preferredLanguage || "auto",
-      closetInsights: closetInsights(body.closet ?? [])
+      closetInsights: closetInsights(body.closet ?? []),
+      shouldRecommend
     };
 
     const input: StylistInputMessage[] = [
@@ -204,7 +242,15 @@ export async function POST(req: NextRequest) {
     const replyText =
       typeof parsed.reply === "string" && parsed.reply.trim()
         ? parsed.reply.trim()
-        : raw.trim() || "This can work with a few tweaks. Verdict: GOOD";
+        : raw.trim() || "This can work with a few tweaks.";
+
+    const cleanedReply = replyText.replace(/\s*Verdict:\s*(NOT GOOD|GOOD|BEST)\s*$/i, "").trim();
+
+    if (!shouldRecommend) {
+      return NextResponse.json({
+        reply: cleanedReply || "I am here. Tell me what mood or outfit you want today."
+      });
+    }
 
     const verdict = normalizeVerdict(parsed.verdict, replyText);
 
@@ -222,9 +268,7 @@ export async function POST(req: NextRequest) {
         typeof parsed.timeSavingTip === "string" && parsed.timeSavingTip.trim()
           ? parsed.timeSavingTip.trim()
           : "Keep one go-to complete outfit ready for this occasion to save time.",
-      reply: replyText.includes("Verdict:")
-        ? replyText
-        : `${replyText}\nVerdict: ${verdict}`
+      reply: cleanedReply ? `${cleanedReply}\nVerdict: ${verdict}` : `Verdict: ${verdict}`
     };
     if (normalized.whyThisWorks.length < 2) {
       normalized.whyThisWorks = [

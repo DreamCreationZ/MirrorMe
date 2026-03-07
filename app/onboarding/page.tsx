@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
-import { COUNTRY_OPTIONS, findCountryByIso, findCountryByName } from "@/lib/location";
+import { COUNTRY_OPTIONS, findCountryByName } from "@/lib/location";
 import { loadProfile, saveProfile } from "@/lib/persistence";
 import { UserProfile } from "@/types/models";
 
@@ -21,6 +21,7 @@ export default function OnboardingPage() {
     skinTone: "medium",
     country: "",
     state: "",
+    pincode: "",
     phoneCountryCode: "+91",
     mobileNumber: "",
     profession: "",
@@ -30,7 +31,6 @@ export default function OnboardingPage() {
   const [status, setStatus] = useState("");
   const [existingProfile, setExistingProfile] = useState(false);
   const [locationStatus, setLocationStatus] = useState("");
-  const [locationAutoAttempted, setLocationAutoAttempted] = useState(false);
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -50,6 +50,7 @@ export default function OnboardingPage() {
         skinTone: profile.skinTone,
         country: profile.country || "",
         state: profile.state || "",
+        pincode: profile.pincode || "",
         phoneCountryCode: profile.phoneCountryCode || findCountryByName(profile.country)?.dialCode || "+91",
         mobileNumber: profile.mobileNumber || "",
         profession: profile.profession,
@@ -59,36 +60,43 @@ export default function OnboardingPage() {
     });
   }, [router]);
 
-  const autoDetectLocation = useCallback(async () => {
-    setLocationStatus("Detecting country and state...");
-    try {
-      const response = await fetch("https://ipapi.co/json/");
-      if (!response.ok) throw new Error("Location lookup failed.");
-      const data = (await response.json()) as {
-        country_code?: string;
-        country_name?: string;
-        region?: string;
-      };
+  const detectLocationFromPincode = useCallback(async () => {
+    const normalized = form.pincode.trim();
+    if (normalized.length < 4) return;
 
-      const matched = findCountryByIso(data.country_code);
-      setForm((f) => ({
-        ...f,
-        country: matched?.name || data.country_name || f.country,
-        state: data.region || f.state,
-        phoneCountryCode: matched?.dialCode || f.phoneCountryCode
-      }));
-      setLocationStatus("Detected location. You can edit if needed.");
+    setLocationStatus("Detecting country and state from pincode...");
+    try {
+      const res = await fetch(`/api/location/pincode?pincode=${encodeURIComponent(normalized)}`);
+      const data = (await res.json()) as {
+        state?: string;
+        countryName?: string;
+        phoneCountryCode?: string;
+        found?: boolean;
+      };
+      if (data?.found) {
+        setForm((f) => ({
+          ...f,
+          state: data.state || f.state,
+          country: data.countryName || f.country,
+          phoneCountryCode: data.phoneCountryCode || f.phoneCountryCode
+        }));
+        setLocationStatus("Country and state detected from pincode.");
+      } else {
+        setLocationStatus("Could not detect location from pincode. Please enter country/state manually.");
+      }
     } catch {
-      setLocationStatus("Could not auto-detect location. Please select manually.");
+      setLocationStatus("Could not detect location from pincode. Please enter country/state manually.");
     }
-  }, []);
+  }, [form.pincode]);
 
   useEffect(() => {
-    if (locationAutoAttempted) return;
-    if (form.country || form.state) return;
-    setLocationAutoAttempted(true);
-    void autoDetectLocation();
-  }, [autoDetectLocation, form.country, form.state, locationAutoAttempted]);
+    const normalized = form.pincode.trim();
+    if (normalized.length < 4) return;
+    const timer = setTimeout(() => {
+      void detectLocationFromPincode();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [detectLocationFromPincode, form.pincode]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -174,6 +182,17 @@ export default function OnboardingPage() {
           <input value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} required />
         </label>
         <label>
+          Pincode
+          <input
+            inputMode="numeric"
+            pattern="[0-9A-Za-z -]{4,12}"
+            value={form.pincode}
+            onChange={(e) => setForm((f) => ({ ...f, pincode: e.target.value }))}
+            onBlur={detectLocationFromPincode}
+            required
+          />
+        </label>
+        <label>
           Country code
           <select
             value={form.phoneCountryCode}
@@ -215,12 +234,7 @@ export default function OnboardingPage() {
           Notes
           <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} />
         </label>
-        <div style={{ gridColumn: "1 / -1" }}>
-          <button type="button" className="secondary" onClick={autoDetectLocation}>
-            Auto Detect Country & State
-          </button>
-          {locationStatus ? <p className="small">{locationStatus}</p> : null}
-        </div>
+        {locationStatus ? <p className="small" style={{ gridColumn: "1 / -1" }}>{locationStatus}</p> : null}
         <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button type="submit">Save Profile</button>
           <button type="button" className="secondary" onClick={() => router.push("/closet")}>Go to Closet</button>

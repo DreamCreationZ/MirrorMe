@@ -8,6 +8,7 @@ export interface UserProfile {
   skinTone: string;
   country: string;
   state: string;
+  pincode: string;
   phoneCountryCode: string;
   mobileNumber: string;
   profession: string;

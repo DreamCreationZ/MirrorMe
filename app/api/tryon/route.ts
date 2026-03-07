@@ -7,6 +7,7 @@ export const maxDuration = 120;
 const postSchema = z.object({
   personImage: z.string().min(1),
   garmentImage: z.string().min(1),
+  garmentType: z.enum(["auto", "upper_body", "lower_body", "dresses"]).optional(),
   awaitResult: z.boolean().optional()
 });
 
@@ -114,30 +115,63 @@ function getFalConfig() {
   return { apiKey, submitUrl };
 }
 
-async function submitFalJob(personImage: string, garmentImage: string): Promise<FalJobMeta> {
+async function submitFalJob(
+  personImage: string,
+  garmentImage: string,
+  garmentType: "auto" | "upper_body" | "lower_body" | "dresses" = "auto"
+): Promise<FalJobMeta> {
   const { apiKey, submitUrl } = getFalConfig();
+  const basePayload: Record<string, unknown> = {
+    human_image_url: personImage,
+    garment_image_url: garmentImage,
+    description:
+      process.env.TRYON_DESCRIPTION ||
+      "Realistic virtual try-on. Put the garment on the person naturally with accurate fit, pose, lighting, and no filters."
+  };
 
-  const submitRes = await fetchWithTimeout(
-    submitUrl,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Key ${apiKey}`
+  const clothTypeMap: Record<"upper_body" | "lower_body" | "dresses", "upper" | "lower" | "overall"> = {
+    upper_body: "upper",
+    lower_body: "lower",
+    dresses: "overall"
+  };
+
+  const candidates: Array<Record<string, unknown>> = [];
+  if (garmentType !== "auto") {
+    candidates.push({ ...basePayload, category: garmentType });
+    candidates.push({ ...basePayload, garment_type: garmentType });
+    candidates.push({ ...basePayload, cloth_type: clothTypeMap[garmentType] });
+  }
+  candidates.push(basePayload);
+
+  let submitRes: Response | null = null;
+  let lastErrorText = "";
+  for (const payload of candidates) {
+    submitRes = await fetchWithTimeout(
+      submitUrl,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Key ${apiKey}`
+        },
+        body: JSON.stringify(payload)
       },
-      body: JSON.stringify({
-        human_image_url: personImage,
-        garment_image_url: garmentImage,
-        description:
-          process.env.TRYON_DESCRIPTION ||
-          "Realistic virtual try-on. Put the garment on the person naturally with accurate fit, pose, lighting, and no filters."
-      })
-    },
-    30000
-  );
+      30000
+    );
 
-  if (!submitRes.ok) {
-    throw new Error(`fal submit error: ${await submitRes.text()}`);
+    if (submitRes.ok) break;
+    lastErrorText = await submitRes.text();
+
+    const payloadKeys = Object.keys(payload);
+    const hasTypeField = payloadKeys.includes("category") || payloadKeys.includes("garment_type") || payloadKeys.includes("cloth_type");
+    const looksLikeFieldError = /extra_forbidden|unknown|validation|field required|not permitted|invalid/i.test(lastErrorText);
+    if (!hasTypeField || !looksLikeFieldError) {
+      break;
+    }
+  }
+
+  if (!submitRes || !submitRes.ok) {
+    throw new Error(`fal submit error: ${lastErrorText || "unknown submit error"}`);
   }
 
   const submitJson = (await submitRes.json()) as Record<string, unknown>;
@@ -352,7 +386,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (provider === "fal_idm_vton") {
-      const job = await submitFalJob(personImage, garmentImage);
+      const job = await submitFalJob(personImage, garmentImage, body.garmentType || "auto");
 
       if (body.awaitResult) {
         const forbidden = new Set([personImage, garmentImage]);

@@ -68,9 +68,13 @@ textarea {
   padding: 10px 12px;
   border: 1px solid #c8b9a8;
   border-radius: 10px;
-  background: #fff;
-  color: var(--ink);
-  caret-color: var(--ink);
+  background: #fff !important;
+  color: var(--ink) !important;
+  -webkit-text-fill-color: var(--ink) !important;
+  caret-color: var(--ink) !important;
+  opacity: 1 !important;
+  pointer-events: auto;
+  user-select: text;
 }
 
 input::placeholder,
@@ -84,9 +88,25 @@ input:-webkit-autofill:focus,
 textarea:-webkit-autofill,
 textarea:-webkit-autofill:hover,
 textarea:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--ink);
+  -webkit-text-fill-color: var(--ink) !important;
   box-shadow: 0 0 0px 1000px #fff inset;
   transition: background-color 9999s ease-out;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #d9b79b;
+  outline-offset: 1px;
+}
+
+.auth-input {
+  background: #ffffff !important;
+  color: #111111 !important;
+  -webkit-text-fill-color: #111111 !important;
+  caret-color: #111111 !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 button {
