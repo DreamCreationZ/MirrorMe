@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
+import { COUNTRY_OPTIONS, findCountryByIso, findCountryByName } from "@/lib/location";
 import { loadProfile, saveProfile } from "@/lib/persistence";
 import { UserProfile } from "@/types/models";
 
@@ -18,12 +19,18 @@ export default function OnboardingPage() {
     age: 24,
     heightCm: 165,
     skinTone: "medium",
+    country: "",
+    state: "",
+    phoneCountryCode: "+91",
+    mobileNumber: "",
     profession: "",
     styleGoals: "",
     notes: ""
   });
   const [status, setStatus] = useState("");
   const [existingProfile, setExistingProfile] = useState(false);
+  const [locationStatus, setLocationStatus] = useState("");
+  const [locationAutoAttempted, setLocationAutoAttempted] = useState(false);
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -41,12 +48,47 @@ export default function OnboardingPage() {
         age: profile.age,
         heightCm: profile.heightCm,
         skinTone: profile.skinTone,
+        country: profile.country || "",
+        state: profile.state || "",
+        phoneCountryCode: profile.phoneCountryCode || findCountryByName(profile.country)?.dialCode || "+91",
+        mobileNumber: profile.mobileNumber || "",
         profession: profile.profession,
         styleGoals: profile.styleGoals,
         notes: profile.notes ?? ""
       });
     });
   }, [router]);
+
+  const autoDetectLocation = useCallback(async () => {
+    setLocationStatus("Detecting country and state...");
+    try {
+      const response = await fetch("https://ipapi.co/json/");
+      if (!response.ok) throw new Error("Location lookup failed.");
+      const data = (await response.json()) as {
+        country_code?: string;
+        country_name?: string;
+        region?: string;
+      };
+
+      const matched = findCountryByIso(data.country_code);
+      setForm((f) => ({
+        ...f,
+        country: matched?.name || data.country_name || f.country,
+        state: data.region || f.state,
+        phoneCountryCode: matched?.dialCode || f.phoneCountryCode
+      }));
+      setLocationStatus("Detected location. You can edit if needed.");
+    } catch {
+      setLocationStatus("Could not auto-detect location. Please select manually.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (locationAutoAttempted) return;
+    if (form.country || form.state) return;
+    setLocationAutoAttempted(true);
+    void autoDetectLocation();
+  }, [autoDetectLocation, form.country, form.state, locationAutoAttempted]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -101,8 +143,60 @@ export default function OnboardingPage() {
           />
         </label>
         <label>
-          Skin tone
+          Color / Skin tone
           <input value={form.skinTone} onChange={(e) => setForm((f) => ({ ...f, skinTone: e.target.value }))} required />
+        </label>
+        <label>
+          Country
+          <select
+            value={form.country}
+            onChange={(e) => {
+              const nextCountry = e.target.value;
+              const matched = COUNTRY_OPTIONS.find((item) => item.name === nextCountry);
+              setForm((f) => ({
+                ...f,
+                country: nextCountry,
+                phoneCountryCode: matched?.dialCode || f.phoneCountryCode
+              }));
+            }}
+            required
+          >
+            <option value="">Select country</option>
+            {COUNTRY_OPTIONS.map((item) => (
+              <option key={item.iso} value={item.name}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          State
+          <input value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} required />
+        </label>
+        <label>
+          Country code
+          <select
+            value={form.phoneCountryCode}
+            onChange={(e) => setForm((f) => ({ ...f, phoneCountryCode: e.target.value }))}
+            required
+          >
+            {Array.from(new Map(COUNTRY_OPTIONS.map((item) => [item.dialCode, item])).values()).map((item) => (
+              <option key={item.dialCode} value={item.dialCode}>
+                {item.dialCode}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Mobile number
+          <input
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]{6,15}"
+            value={form.mobileNumber}
+            onChange={(e) => setForm((f) => ({ ...f, mobileNumber: e.target.value.replace(/[^\d]/g, "") }))}
+            required
+          />
         </label>
         <label>
           Profession
@@ -121,6 +215,12 @@ export default function OnboardingPage() {
           Notes
           <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} />
         </label>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <button type="button" className="secondary" onClick={autoDetectLocation}>
+            Auto Detect Country & State
+          </button>
+          {locationStatus ? <p className="small">{locationStatus}</p> : null}
+        </div>
         <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button type="submit">Save Profile</button>
           <button type="button" className="secondary" onClick={() => router.push("/closet")}>Go to Closet</button>

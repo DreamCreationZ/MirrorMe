@@ -6,6 +6,10 @@ export interface UserProfile {
   age: number;
   heightCm: number;
   skinTone: string;
+  country: string;
+  state: string;
+  phoneCountryCode: string;
+  mobileNumber: string;
   profession: string;
   styleGoals: string;
   notes?: string;

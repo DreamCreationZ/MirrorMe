@@ -16,6 +16,10 @@ const schema = z.object({
       age: z.number().optional(),
       heightCm: z.number().optional(),
       skinTone: z.string().optional(),
+      country: z.string().optional(),
+      state: z.string().optional(),
+      phoneCountryCode: z.string().optional(),
+      mobileNumber: z.string().optional(),
       profession: z.string().optional(),
       styleGoals: z.string().optional(),
       notes: z.string().optional()
