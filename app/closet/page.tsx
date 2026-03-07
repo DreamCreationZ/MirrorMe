@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
-import { addClosetItem, loadCloset } from "@/lib/persistence";
+import { addClosetItem, loadCloset, markClosetItemWorn } from "@/lib/persistence";
 import { ClosetItem } from "@/types/models";
 
 function uid() {
@@ -14,6 +14,7 @@ export default function ClosetPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [items, setItems] = useState<ClosetItem[]>([]);
+  const [viewMode, setViewMode] = useState<"hanger" | "list">("hanger");
   const [form, setForm] = useState({
     category: "top" as ClosetItem["category"],
     name: "",
@@ -22,6 +23,9 @@ export default function ClosetPage() {
     tags: "",
     imageUrl: ""
   });
+  const [uploadPreview, setUploadPreview] = useState("");
+  const [normalizing, setNormalizing] = useState(false);
+  const [normalizeNote, setNormalizeNote] = useState("");
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -54,6 +58,105 @@ export default function ClosetPage() {
     await addClosetItem(userId, payload);
     setItems((prev) => [payload, ...prev]);
     setForm((f) => ({ ...f, name: "", color: "", brand: "", tags: "", imageUrl: "" }));
+  }
+
+  async function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read image."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function normalizeGarmentImage(source: string): Promise<string> {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Invalid image file."));
+      img.src = source;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 760;
+    canvas.height = 980;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return source;
+
+    ctx.fillStyle = "#fffaf4";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const topGlow = ctx.createRadialGradient(canvas.width * 0.2, 90, 10, canvas.width * 0.2, 90, 280);
+    topGlow.addColorStop(0, "rgba(255,245,229,0.9)");
+    topGlow.addColorStop(1, "rgba(255,245,229,0)");
+    ctx.fillStyle = topGlow;
+    ctx.fillRect(0, 0, canvas.width, 320);
+
+    const maxW = canvas.width * 0.82;
+    const maxH = canvas.height * 0.76;
+    const ratio = Math.min(maxW / image.width, maxH / image.height);
+    const drawW = image.width * ratio;
+    const drawH = image.height * ratio;
+    const x = (canvas.width - drawW) / 2;
+    const y = canvas.height * 0.12;
+
+    // Subtle floor shadow to mimic hanger/product shoot consistency.
+    ctx.beginPath();
+    ctx.ellipse(canvas.width / 2, y + drawH + 26, drawW * 0.34, 16, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(58,40,20,0.14)";
+    ctx.fill();
+
+    ctx.filter = "contrast(1.08) saturate(1.04) brightness(1.03)";
+    ctx.drawImage(image, x, y, drawW, drawH);
+    ctx.filter = "none";
+
+    return canvas.toDataURL("image/jpeg", 0.86);
+  }
+
+  async function onImageUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNormalizing(true);
+    setNormalizeNote("");
+    try {
+      const source = await fileToDataUrl(file);
+      let processed = source;
+
+      const aiRes = await fetch("/api/garment-normalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrl: source })
+      });
+      const aiData = (await aiRes.json()) as { processedImageDataUrl?: string; provider?: string; note?: string };
+      if (aiData.processedImageDataUrl) processed = aiData.processedImageDataUrl;
+      if (aiData.provider === "removebg") {
+        setNormalizeNote("Studio mode: AI background cleanup applied.");
+      } else if (aiData.note) {
+        setNormalizeNote(aiData.note);
+      }
+
+      const normalized = await normalizeGarmentImage(processed);
+      setForm((f) => ({ ...f, imageUrl: normalized }));
+      setUploadPreview(normalized);
+    } finally {
+      setNormalizing(false);
+    }
+  }
+
+  async function markWorn(itemId: string) {
+    if (!userId) return;
+    await markClosetItemWorn(userId, itemId);
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              lastWornAt: Date.now(),
+              wearCount: (item.wearCount ?? 0) + 1
+            }
+          : item
+      )
+    );
   }
 
   return (
@@ -93,6 +196,18 @@ export default function ClosetPage() {
             Image URL (optional)
             <input value={form.imageUrl} onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))} />
           </label>
+          <label>
+            Upload Garment Photo (auto organized for virtual hanger)
+            <input type="file" accept="image/*" onChange={onImageUpload} />
+          </label>
+          {normalizing ? <p className="small">Normalizing image for clean hanger layout...</p> : null}
+          {normalizeNote ? <p className="small">{normalizeNote}</p> : null}
+          {uploadPreview ? (
+            <div style={{ border: "1px solid #e5d4bf", borderRadius: 10, padding: 8, marginBottom: 10 }}>
+              <p className="small" style={{ marginTop: 0 }}>Normalized preview</p>
+              <img src={uploadPreview} alt="Normalized garment preview" style={{ width: "100%", borderRadius: 8 }} />
+            </div>
+          ) : null}
           <button type="submit">Add Item</button>
           <button type="button" className="secondary" style={{ marginLeft: 8 }} onClick={() => router.push("/occasion")}>
             Skip for Now
@@ -102,15 +217,42 @@ export default function ClosetPage() {
 
       <article className="card">
         <h2>Your Closet ({items.length})</h2>
-        <div className="grid">
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <button type="button" className={viewMode === "hanger" ? "" : "secondary"} onClick={() => setViewMode("hanger")}>
+            Virtual Hanger View
+          </button>
+          <button type="button" className={viewMode === "list" ? "" : "secondary"} onClick={() => setViewMode("list")}>
+            List View
+          </button>
+        </div>
+        <div className={viewMode === "hanger" ? "closet-hanger-grid" : "grid"}>
           {items.map((item) => (
-            <div key={item.id} style={{ border: "1px solid #e7d4be", borderRadius: 12, padding: 12 }}>
+            <div key={item.id} className={viewMode === "hanger" ? "hanger-card" : ""} style={{ border: "1px solid #e7d4be", borderRadius: 12, padding: 12 }}>
+              {viewMode === "hanger" ? (
+                <div className="hanger-photo-wrap">
+                  <div className="hanger-hook" />
+                  <div className="hanger-rail" />
+                  {item.imageUrl ? (
+                    <img src={item.imageUrl} alt={item.name} className="hanger-photo" />
+                  ) : (
+                    <div className="hanger-placeholder small">No image uploaded</div>
+                  )}
+                </div>
+              ) : null}
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <strong>{item.name}</strong>
                 <span className="badge">{item.category}</span>
               </div>
               <p className="small" style={{ marginBottom: 6 }}>{item.color}{item.brand ? ` · ${item.brand}` : ""}</p>
               <p className="small">{item.tags.join(", ") || "No tags"}</p>
+              <p className="small" style={{ marginBottom: 8 }}>
+                {item.lastWornAt
+                  ? `Last worn: ${new Date(item.lastWornAt).toLocaleDateString()} · Worn ${item.wearCount ?? 1} times`
+                  : "Not marked worn yet"}
+              </p>
+              <button type="button" className="secondary" onClick={() => markWorn(item.id)}>
+                Mark as Worn Today
+              </button>
             </div>
           ))}
           {!items.length ? <p className="small">No items yet.</p> : null}

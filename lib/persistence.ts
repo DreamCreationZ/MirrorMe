@@ -1,6 +1,6 @@
 "use client";
 
-import { addDoc, collection, getDocs, orderBy, query, setDoc, doc } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, setDoc, doc } from "firebase/firestore";
 import { db, firebaseReady } from "@/lib/firebase";
 import { localStore } from "@/lib/localStore";
 import { ClosetItem, UserProfile } from "@/types/models";
@@ -23,7 +23,7 @@ export async function addClosetItem(userId: string, item: ClosetItem): Promise<v
 
   if (!firebaseReady() || !db) return;
 
-  await addDoc(collection(db, "users", userId, "closet"), item);
+  await setDoc(doc(db, "users", userId, "closet", item.id), item, { merge: true });
 }
 
 export async function loadCloset(userId: string): Promise<ClosetItem[]> {
@@ -39,4 +39,27 @@ export async function loadCloset(userId: string): Promise<ClosetItem[]> {
   } catch {
     return local;
   }
+}
+
+export async function markClosetItemWorn(userId: string, itemId: string): Promise<void> {
+  const now = Date.now();
+  const current = localStore.getCloset(userId);
+  const updated = current.map((item) =>
+    item.id === itemId
+      ? {
+          ...item,
+          lastWornAt: now,
+          wearCount: (item.wearCount ?? 0) + 1
+        }
+      : item
+  );
+
+  localStore.setCloset(userId, updated);
+
+  if (!firebaseReady() || !db) return;
+
+  const changed = updated.find((item) => item.id === itemId);
+  if (!changed) return;
+
+  await setDoc(doc(db, "users", userId, "closet", itemId), changed, { merge: true });
 }

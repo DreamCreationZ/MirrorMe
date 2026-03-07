@@ -22,9 +22,29 @@ const schema = z.object({
     })
     .nullable()
     .optional(),
-  closet: z.array(z.any()).optional(),
-  occasion: z.string().optional()
+  closet: z.array(z.record(z.unknown())).optional(),
+  occasion: z.string().optional(),
+  stylistName: z.string().optional(),
+  conversationMode: z.enum(["chat", "talk"]).optional(),
+  preferredLanguage: z.string().optional()
 });
+
+type ResponsesCreateInput = NonNullable<Parameters<OpenAI["responses"]["create"]>[0]["input"]>;
+type StylistInputMessage = {
+  role: "system" | "user" | "assistant";
+  content:
+    | string
+    | Array<
+        | {
+            type: "input_text";
+            text: string;
+          }
+        | {
+            type: "input_image";
+            image_url: string;
+          }
+      >;
+};
 
 const recommendationSchema = z.object({
   verdict: z.enum(["NOT GOOD", "GOOD", "BEST"]),
@@ -45,6 +65,9 @@ Personalization rules:
 - Always use saved profile details: height, skin tone, age, profession, style goals.
 - Factor the occasion in every judgment.
 - If images are provided, visually analyze them before giving verdict.
+- Also guide makeup honestly when user asks (base, lips, eyes, finish, shade direction).
+- If user asks non-fashion personal chat, answer warmly but keep stylist personality.
+- Reply in the user's language. If preferred language is set, prioritize that.
 Output format rules:
 - Return strict JSON only.
 - Keys must be exactly: verdict, confidence, whyThisWorks, alternatives, timeSavingTip, reply.
@@ -89,6 +112,27 @@ function extractJsonBlock(text: string) {
   return trimmed;
 }
 
+function closetInsights(closet: Array<Record<string, unknown>>) {
+  const now = Date.now();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+
+  const recentlyWorn = closet
+    .filter((item) => typeof item.lastWornAt === "number" && now - Number(item.lastWornAt) <= sevenDaysMs)
+    .map((item) => String(item.name || "Unknown item"))
+    .slice(0, 12);
+
+  const longNotWorn = closet
+    .filter((item) => {
+      if (typeof item.lastWornAt !== "number") return true;
+      return now - Number(item.lastWornAt) >= thirtyDaysMs;
+    })
+    .map((item) => String(item.name || "Unknown item"))
+    .slice(0, 12);
+
+  return { recentlyWorn, longNotWorn };
+}
+
 export async function POST(req: NextRequest) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
@@ -103,22 +147,35 @@ export async function POST(req: NextRequest) {
       profile: body.profile ?? null,
       occasion: body.occasion ?? "casual",
       closetCount: body.closet?.length ?? 0,
-      closet: body.closet?.slice(0, 25) ?? []
+      closet: body.closet?.slice(0, 25) ?? [],
+      stylistName: body.stylistName || "Meera",
+      conversationMode: body.conversationMode || "chat",
+      preferredLanguage: body.preferredLanguage || "auto",
+      closetInsights: closetInsights(body.closet ?? [])
     };
 
-    const input: any[] = [
+    const input: StylistInputMessage[] = [
       { role: "system", content: systemPrompt },
+      {
+        role: "system",
+        content: `Your stylist name is "${contextSummary.stylistName}". Talk like a natural human stylist. If mode is talk, keep reply shorter and conversational. Use language preference: "${contextSummary.preferredLanguage}".`
+      },
+      {
+        role: "system",
+        content:
+          "Wardrobe rules: If closet has items, actively recommend specific items from closet. If user asks to repeat something worn recently, call it out honestly and suggest a better alternative from long-not-worn items. If closet is empty, ask user to share what they have in mind and upload photo for honest advice."
+      },
       {
         role: "system",
         content: `User context JSON:\n${JSON.stringify(contextSummary, null, 2)}`
       },
-      ...body.messages.map((m) => {
+      ...body.messages.map<StylistInputMessage>((m) => {
         if (m.role === "user" && m.images?.length) {
           return {
-            role: "user",
+            role: "user" as const,
             content: [
-              { type: "input_text", text: m.content || "Please review these outfit images." },
-              ...m.images.map((imageUrl) => ({ type: "input_image", image_url: imageUrl }))
+              { type: "input_text" as const, text: m.content || "Please review these outfit images." },
+              ...m.images.map((imageUrl) => ({ type: "input_image" as const, image_url: imageUrl }))
             ]
           };
         }
@@ -129,7 +186,7 @@ export async function POST(req: NextRequest) {
 
     const completion = await client.responses.create({
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      input
+      input: input as ResponsesCreateInput
     });
 
     const raw = completion.output_text || "";
@@ -200,7 +257,7 @@ export async function POST(req: NextRequest) {
         timeSavingTip: json.timeSavingTip
       }
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         error: "Stylist is temporarily having trouble formatting the response. Please try again."

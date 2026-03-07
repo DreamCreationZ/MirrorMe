@@ -1,4 +1,4 @@
-import { ClosetItem, SavedLook, SessionFeedback, StylistMessage, UserProfile } from "@/types/models";
+import { ClosetItem, SavedLook, SessionFeedback, StylistConfig, StylistMessage, TryOnPreset, UserProfile } from "@/types/models";
 
 const PROFILE_KEY = "fashion_profile";
 const CLOSET_KEY = "fashion_closet";
@@ -6,6 +6,8 @@ const OCCASION_KEY = "fashion_occasion";
 const STYLIST_MESSAGES_KEY = "fashion_stylist_messages";
 const SAVED_LOOKS_KEY = "fashion_saved_looks";
 const SESSION_FEEDBACK_KEY = "fashion_session_feedback";
+const STYLIST_CONFIG_KEY = "fashion_stylist_config";
+const TRYON_PRESET_KEY = "fashion_tryon_preset";
 
 function safeRead<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -45,5 +47,18 @@ export const localStore = {
   addSessionFeedback: (userId: string, feedback: SessionFeedback) => {
     const current = safeRead<SessionFeedback[]>(`${SESSION_FEEDBACK_KEY}:${userId}`, []);
     localStorage.setItem(`${SESSION_FEEDBACK_KEY}:${userId}`, JSON.stringify([feedback, ...current]));
+  },
+  getStylistConfig: (userId: string): StylistConfig | null =>
+    safeRead<StylistConfig | null>(`${STYLIST_CONFIG_KEY}:${userId}`, null),
+  setStylistConfig: (userId: string, config: StylistConfig) => {
+    localStorage.setItem(`${STYLIST_CONFIG_KEY}:${userId}`, JSON.stringify(config));
+  },
+  getTryOnPreset: (userId: string): TryOnPreset | null =>
+    safeRead<TryOnPreset | null>(`${TRYON_PRESET_KEY}:${userId}`, null),
+  setTryOnPreset: (userId: string, preset: TryOnPreset) => {
+    localStorage.setItem(`${TRYON_PRESET_KEY}:${userId}`, JSON.stringify(preset));
+  },
+  clearTryOnPreset: (userId: string) => {
+    localStorage.removeItem(`${TRYON_PRESET_KEY}:${userId}`);
   }
 };

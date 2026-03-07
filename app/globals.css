@@ -137,3 +137,64 @@ button.secondary {
   color: var(--bad);
   font-weight: 600;
 }
+
+.closet-hanger-grid {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 800px) {
+  .closet-hanger-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.hanger-card {
+  background: linear-gradient(180deg, #fffdf9 0%, #f9f1e6 100%);
+}
+
+.hanger-photo-wrap {
+  position: relative;
+  border: 1px solid #e5d4bf;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 15% 10%, #fff4e5 0, transparent 45%),
+    linear-gradient(180deg, #fffaf3, #f5ebdd);
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  padding: 24px 14px 12px;
+  margin-bottom: 10px;
+}
+
+.hanger-hook {
+  position: absolute;
+  top: 8px;
+  width: 32px;
+  height: 16px;
+  border: 2px solid #b49674;
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+}
+
+.hanger-rail {
+  position: absolute;
+  top: 24px;
+  width: 80%;
+  height: 2px;
+  background: #c8af91;
+}
+
+.hanger-photo {
+  width: 100%;
+  max-height: 170px;
+  object-fit: contain;
+  filter: contrast(1.04) saturate(1.02);
+}
+
+.hanger-placeholder {
+  border: 1px dashed #ccb59b;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff6ea;
+}

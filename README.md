@@ -7,6 +7,12 @@ Fashion app MVP with:
 - Occasion selector
 - AI stylist chat with brutally honest verdicts + conversation memory
 - Trust features: confidence score, why-it-works reasoning, alternatives, quick feedback, saved looks + wear history
+- Stylist persona features: user can name stylist and switch between Chat mode and Talk mode
+- Multilingual stylist replies with user language preference + honest makeup guidance
+- Wardrobe intelligence: stylist considers recently worn vs long-not-worn items and recommends rotation honestly
+- Full-look try-on support: send multiple outfit pieces (shirt/pants/saree/blouse etc.) from Stylist to Try-On for sequential overlay
+- Wardrobe image normalization: uploaded garment photos are auto-cleaned and standardized for hanger-style presentation
+- Optional studio-grade background removal for wardrobe uploads via remove.bg (`REMOVE_BG_API_KEY`)
 - Virtual try-on API pipeline (mock + pluggable real provider)
 
 ## Stack

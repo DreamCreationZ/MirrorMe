@@ -21,6 +21,8 @@ export interface ClosetItem {
   tags: string[];
   imageUrl?: string;
   createdAt: number;
+  lastWornAt?: number;
+  wearCount?: number;
 }
 
 export interface StylistMessage {
@@ -52,5 +54,18 @@ export interface SessionFeedback {
   rating: number;
   liked: boolean;
   comment: string;
+  createdAt: number;
+}
+
+export interface StylistConfig {
+  name: string;
+  mode: "chat" | "talk";
+  preferredLanguage: string;
+  createdAt: number;
+}
+
+export interface TryOnPreset {
+  personImage?: string;
+  garmentImages: string[];
   createdAt: number;
 }

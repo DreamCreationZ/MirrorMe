@@ -42,8 +42,9 @@ function ensureFirebaseAuth() {
 
 async function ensurePersistence() {
   ensureFirebaseAuth();
-  if (!auth || persistenceInitialized) return;
-  await setPersistence(auth, browserLocalPersistence);
+  const firebaseAuth = auth;
+  if (!firebaseAuth || persistenceInitialized) return;
+  await setPersistence(firebaseAuth, browserLocalPersistence);
   persistenceInitialized = true;
 }
 
@@ -53,10 +54,11 @@ export function getCurrentUser(): AuthUser | null {
 }
 
 export async function waitForAuthInit(): Promise<AuthUser | null> {
-  if (!auth) return null;
+  const firebaseAuth = auth;
+  if (!firebaseAuth) return null;
 
   return new Promise((resolve) => {
-    const unsubscribe = firebaseOnAuthStateChanged(auth, (user) => {
+    const unsubscribe = firebaseOnAuthStateChanged(firebaseAuth, (user) => {
       unsubscribe();
       resolve(mapUser(user));
     });
@@ -65,9 +67,10 @@ export async function waitForAuthInit(): Promise<AuthUser | null> {
 
 export async function signup(name: string, email: string, password: string): Promise<AuthUser> {
   await ensurePersistence();
-  if (!auth) throw new Error("Firebase auth unavailable.");
+  const firebaseAuth = auth;
+  if (!firebaseAuth) throw new Error("Firebase auth unavailable.");
 
-  const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+  const result = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
   if (name.trim()) {
     await updateProfile(result.user, { displayName: name.trim() });
   }
@@ -79,9 +82,10 @@ export async function signup(name: string, email: string, password: string): Pro
 
 export async function login(email: string, password: string): Promise<AuthUser> {
   await ensurePersistence();
-  if (!auth) throw new Error("Firebase auth unavailable.");
+  const firebaseAuth = auth;
+  if (!firebaseAuth) throw new Error("Firebase auth unavailable.");
 
-  const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+  const result = await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
   const mapped = mapUser(result.user);
   if (!mapped) throw new Error("Login failed.");
   return mapped;
@@ -89,17 +93,19 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 
 export async function logout(): Promise<void> {
   ensureFirebaseAuth();
-  if (!auth) return;
-  await signOut(auth);
+  const firebaseAuth = auth;
+  if (!firebaseAuth) return;
+  await signOut(firebaseAuth);
 }
 
 export function onAuthChange(callback: (user: AuthUser | null) => void): () => void {
-  if (!auth) {
+  const firebaseAuth = auth;
+  if (!firebaseAuth) {
     callback(null);
     return () => {};
   }
 
-  const unsubscribe = firebaseOnAuthStateChanged(auth, (user) => {
+  const unsubscribe = firebaseOnAuthStateChanged(firebaseAuth, (user) => {
     callback(mapUser(user));
   });
 

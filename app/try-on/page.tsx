@@ -1,9 +1,10 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { waitForAuthInit } from "@/lib/auth";
 import { storage } from "@/lib/firebase";
+import { localStore } from "@/lib/localStore";
 
 function makeId() {
   return Math.random().toString(36).slice(2, 10);
@@ -31,9 +32,25 @@ export default function TryOnPage() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [useUrlOnlyMode, setUseUrlOnlyMode] = useState(true);
+  const [extraGarmentUrls, setExtraGarmentUrls] = useState("");
+  const [presetGarments, setPresetGarments] = useState<string[]>([]);
 
   const personImage = useMemo(() => personPreview || personImageUrl, [personPreview, personImageUrl]);
   const garmentImage = useMemo(() => garmentPreview || garmentImageUrl, [garmentPreview, garmentImageUrl]);
+
+  useEffect(() => {
+    waitForAuthInit().then((user) => {
+      if (!user) return;
+      const preset = localStore.getTryOnPreset(user.id);
+      if (!preset) return;
+      if (preset.personImage && !personImageUrl) setPersonImageUrl(preset.personImage);
+      if (preset.garmentImages.length) {
+        setGarmentImageUrl(preset.garmentImages[0]);
+        setPresetGarments(preset.garmentImages.slice(1));
+      }
+      localStore.clearTryOnPreset(user.id);
+    });
+  }, [personImageUrl]);
 
   async function compressImage(file: File, maxSide = 1280, quality = 0.82): Promise<File> {
     const dataUrl = await fileToDataUrl(file);
@@ -112,6 +129,33 @@ export default function TryOnPage() {
     return Promise.race([uploadPromise, timeoutPromise]);
   }
 
+  function isHttpUrl(value: string) {
+    return /^https?:\/\//i.test(value);
+  }
+
+  function isDataUrl(value: string) {
+    return /^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(value);
+  }
+
+  function dataUrlToFile(dataUrl: string, name: string): File {
+    const [meta, data] = dataUrl.split(",");
+    const mimeMatch = meta.match(/data:(.*?);base64/);
+    const mime = mimeMatch?.[1] || "image/jpeg";
+    const bin = atob(data || "");
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], name, { type: mime });
+  }
+
+  async function ensurePublicImageUrl(source: string, type: "person" | "garment", index = 0): Promise<string> {
+    if (isHttpUrl(source)) return source;
+    if (!isDataUrl(source)) return source;
+
+    const file = dataUrlToFile(source, `${type}-${Date.now()}-${index}.jpg`);
+    const compressed = await compressImage(file);
+    return uploadForTryOn(compressed, type);
+  }
+
   async function pollTryOn(job: TryOnJob, personPayload: string, garmentPayload: string) {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const params = new URLSearchParams({
@@ -133,9 +177,7 @@ export default function TryOnPage() {
       };
 
       if (pollData.resultUrl) {
-        setResultUrl(pollData.resultUrl);
-        setStatus("Done. Realistic overlay generated.");
-        return;
+        return pollData.resultUrl;
       }
 
       if (String(pollData.state || "").toLowerCase() === "completed") {
@@ -151,6 +193,40 @@ export default function TryOnPage() {
     }
 
     throw new Error("Try-on is still processing. Please retry in a minute.");
+  }
+
+  async function runTryOnStep(personPayload: string, garmentPayload: string, step: number, total: number) {
+    setStatus(`Submitting overlay step ${step}/${total}...`);
+    const res = await fetch("/api/tryon", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personImage: personPayload, garmentImage: garmentPayload, awaitResult: false })
+    });
+
+    const data = (await res.json()) as {
+      requestId?: string;
+      statusUrl?: string;
+      responseUrl?: string;
+      resultUrl?: string;
+      error?: string;
+      note?: string;
+    };
+
+    if (data.resultUrl) return data.resultUrl;
+    if (!data.requestId || !data.responseUrl) {
+      throw new Error(data.error || "Try-on job could not be created.");
+    }
+
+    setStatus(`Applying piece ${step}/${total}...`);
+    return pollTryOn(
+      {
+        requestId: data.requestId,
+        statusUrl: data.statusUrl || "",
+        responseUrl: data.responseUrl
+      },
+      personPayload,
+      garmentPayload
+    );
   }
 
   async function onSubmit(e: FormEvent) {
@@ -192,44 +268,26 @@ export default function TryOnPage() {
         garmentPayload = garmentUploaded;
       }
 
-      setStatus("Submitting virtual try-on job...");
+      const extraFromInput = extraGarmentUrls
+        .split(/\n|,/g)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      const garmentSequenceRaw = [garmentPayload, ...presetGarments, ...extraFromInput].filter(Boolean);
 
-      const res = await fetch("/api/tryon", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personImage: personPayload, garmentImage: garmentPayload, awaitResult: false })
-      });
-
-      const data = (await res.json()) as {
-        state?: string;
-        requestId?: string;
-        statusUrl?: string;
-        responseUrl?: string;
-        resultUrl?: string;
-        error?: string;
-        note?: string;
-      };
-
-      if (data.resultUrl) {
-        setResultUrl(data.resultUrl);
-        setStatus(data.note || "Done. Realistic overlay generated.");
-        return;
-      }
-
-      if (!data.requestId || !data.responseUrl) {
-        throw new Error(data.error || "Try-on job could not be created.");
-      }
-
-      setStatus("Job submitted. Waiting for model output...");
-      await pollTryOn(
-        {
-          requestId: data.requestId,
-          statusUrl: data.statusUrl || "",
-          responseUrl: data.responseUrl
-        },
-        personPayload,
-        garmentPayload
+      let currentPerson = personPayload;
+      currentPerson = await ensurePublicImageUrl(currentPerson, "person", 0);
+      const garmentSequence = await Promise.all(
+        garmentSequenceRaw.map((piece, index) => ensurePublicImageUrl(piece, "garment", index))
       );
+
+      for (let i = 0; i < garmentSequence.length; i += 1) {
+        const piece = garmentSequence[i];
+        const stepUrl = await runTryOnStep(currentPerson, piece, i + 1, garmentSequence.length);
+        currentPerson = stepUrl;
+      }
+
+      setResultUrl(currentPerson);
+      setStatus("Done. Full outfit overlay generated.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Try-on failed during upload or generation.";
       if (message.includes("storage/retry-limit-exceeded")) {
@@ -306,6 +364,16 @@ export default function TryOnPage() {
               }}
             />
           </label>
+          <label>
+            Additional garment URLs (shirt, pants, saree, blouse...) one per line
+            <textarea
+              rows={3}
+              value={extraGarmentUrls}
+              onChange={(e) => setExtraGarmentUrls(e.target.value)}
+              placeholder="https://...shirt.jpg&#10;https://...pants.jpg"
+            />
+          </label>
+          {presetGarments.length ? <p className="small">Preset pieces from stylist page: {presetGarments.length}</p> : null}
           <button type="submit" disabled={loading}>{loading ? "Working..." : "Generate Try-On"}</button>
         </form>
 
