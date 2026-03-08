@@ -8,6 +8,7 @@ import { loadProfile } from "@/lib/persistence";
 const links = [
   ["Home", "/"],
   ["Profile", "/onboarding"],
+  ["Welcome", "/welcome"],
   ["Closet", "/closet"],
   ["Occasion", "/occasion"],
   ["Stylist", "/stylist"],

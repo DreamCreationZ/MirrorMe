@@ -99,15 +99,18 @@ export default function LoginPage() {
         await saveProfile(user.id, payload);
       }
       const profile = await loadProfile(user.id);
-      const needsMandatoryOnboarding = !profile || !profile.frontImageUrl;
-      router.push(needsMandatoryOnboarding ? "/onboarding" : "/occasion");
+      if (!profile) {
+        router.push("/onboarding");
+        return;
+      }
+      router.push(profile.frontImageUrl ? "/occasion" : "/welcome");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Authentication failed.");
     }
   }
 
   return (
-    <section className="card" style={{ maxWidth: 560, margin: "0 auto" }}>
+    <section className="card phone-single" style={{ maxWidth: 560, margin: "0 auto" }}>
       <h1>{mode === "login" ? "Log In" : "Create Account"}</h1>
       <p className="small">Login is required to keep profile, closet, and stylist memory per user.</p>
       {activeSessionName ? (

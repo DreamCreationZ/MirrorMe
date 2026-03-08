@@ -9,6 +9,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
+  const [hasFrontPhoto, setHasFrontPhoto] = useState(false);
 
   useEffect(() => {
     waitForAuthInit().then(async (session) => {
@@ -19,12 +20,13 @@ export default function HomePage() {
       setLoggedIn(true);
       const profile = await loadProfile(session.id);
       setHasProfile(Boolean(profile));
+      setHasFrontPhoto(Boolean(profile?.frontImageUrl));
       setLoading(false);
     });
   }, []);
 
   return (
-    <section className="card grid">
+    <section className="card grid phone-single">
       <h1>Brutal Stylist</h1>
       <p>
         Build your closet inventory, tell us who you are, pick an occasion, and chat with an AI stylist that gives
@@ -37,9 +39,13 @@ export default function HomePage() {
             <Link href="/login">
               <button>Log In to Start</button>
             </Link>
-          ) : hasProfile ? (
+          ) : hasProfile && hasFrontPhoto ? (
             <Link href="/occasion">
               <button>Continue Styling</button>
+            </Link>
+          ) : hasProfile ? (
+            <Link href="/welcome">
+              <button>Complete Welcome Setup</button>
             </Link>
           ) : (
             <Link href="/onboarding">

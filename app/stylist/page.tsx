@@ -466,8 +466,8 @@ export default function StylistPage() {
   }
 
   return (
-    <section className="grid">
-      <article className="card">
+    <section className="grid phone-grid">
+      <article className="card phone-card">
         <h2>{stylistName} - AI Stylist</h2>
         <p className="small">Occasion: <strong>{occasion || "casual"}</strong></p>
 

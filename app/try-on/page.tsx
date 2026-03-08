@@ -250,8 +250,8 @@ export default function TryOnPage() {
   }
 
   return (
-    <section className="grid cols-2">
-      <article className="card">
+    <section className="grid cols-2 phone-grid">
+      <article className="card phone-card">
         <h1>Virtual Try-On</h1>
         <p className="small">
           Upload only garment photo. Your saved onboarding front photo is used automatically.
@@ -305,7 +305,7 @@ export default function TryOnPage() {
         <p className="small">If onboarding photo is missing, open Profile page and upload front standing photo.</p>
       </article>
 
-      <article className="card" style={{ gridColumn: "1 / -1" }}>
+      <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
         <h2>Output</h2>
         {!resultUrl ? <p className="small">No output yet.</p> : <img src={resultUrl} alt="Try-on result" style={{ width: "100%", borderRadius: 12 }} />}
       </article>

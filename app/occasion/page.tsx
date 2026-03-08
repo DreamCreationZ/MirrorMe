@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
+import { loadProfile } from "@/lib/persistence";
 import { Occasion } from "@/types/models";
 
 const options: Occasion[] = ["casual", "party", "festival", "work", "date"];
@@ -15,9 +16,14 @@ export default function OccasionPage() {
   const [occasion, setOccasion] = useState<Occasion>("casual");
 
   useEffect(() => {
-    waitForAuthInit().then((user) => {
+    waitForAuthInit().then(async (user) => {
       if (!user) {
         router.replace("/login");
+        return;
+      }
+      const profile = await loadProfile(user.id);
+      if (!profile?.frontImageUrl) {
+        router.replace("/welcome");
         return;
       }
       setUserId(user.id);
@@ -33,7 +39,7 @@ export default function OccasionPage() {
   }
 
   return (
-    <section className="card">
+    <section className="card phone-single">
       <h1>Select Occasion</h1>
       <p className="small">The stylist uses this context for suggestions and dress feedback.</p>
 

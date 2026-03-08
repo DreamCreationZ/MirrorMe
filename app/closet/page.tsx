@@ -166,8 +166,8 @@ export default function ClosetPage() {
   }
 
   return (
-    <section className="grid cols-2">
-      <article className="card">
+    <section className="grid cols-2 phone-grid">
+      <article className="card phone-card">
         <h2>Add Closet Item</h2>
         <form onSubmit={onSubmit}>
           <label>
@@ -222,7 +222,7 @@ export default function ClosetPage() {
         {status ? <p className="small">{status}</p> : null}
       </article>
 
-      <article className="card">
+      <article className="card phone-card">
         <h2>Your Closet ({items.length})</h2>
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           <button type="button" className={viewMode === "hanger" ? "" : "secondary"} onClick={() => setViewMode("hanger")}>
