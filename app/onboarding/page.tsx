@@ -11,6 +11,8 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+const AVATARS = ["👩", "👨", "🧑", "👩‍💼", "👨‍💼", "🧕", "👩‍🎤", "👨‍🎨"] as const;
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -19,6 +21,8 @@ export default function OnboardingPage() {
     age: 24,
     heightCm: 165,
     skinTone: "medium",
+    avatarEmoji: "👩",
+    frontImageUrl: "",
     country: "",
     state: "",
     pincode: "",
@@ -31,6 +35,15 @@ export default function OnboardingPage() {
   const [status, setStatus] = useState("");
   const [existingProfile, setExistingProfile] = useState(false);
   const [locationStatus, setLocationStatus] = useState("");
+
+  async function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read image."));
+      reader.readAsDataURL(file);
+    });
+  }
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -48,6 +61,8 @@ export default function OnboardingPage() {
         age: profile.age,
         heightCm: profile.heightCm,
         skinTone: profile.skinTone,
+        avatarEmoji: profile.avatarEmoji || "👩",
+        frontImageUrl: profile.frontImageUrl || "",
         country: profile.country || "",
         state: profile.state || "",
         pincode: profile.pincode || "",
@@ -100,6 +115,10 @@ export default function OnboardingPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!form.frontImageUrl.trim()) {
+      setStatus("Front standing photo is required to continue.");
+      return;
+    }
     setStatus("Saving profile...");
 
     const payload: UserProfile = {
@@ -118,7 +137,7 @@ export default function OnboardingPage() {
   return (
     <section className="card">
       <h1>Personal Style Profile</h1>
-      <p className="small">This profile is used even when users skip closet uploads.</p>
+      <p className="small">This profile is used even when users skip closet uploads. Front photo is mandatory for instant try-on.</p>
       {existingProfile ? (
         <p className="small text-good">
           Profile already saved for this account. You can edit it below or continue directly.
@@ -126,6 +145,40 @@ export default function OnboardingPage() {
       ) : null}
 
       <form onSubmit={onSubmit} className="grid cols-2">
+        <label>
+          Choose avatar
+          <div className="avatar-picker">
+            {AVATARS.map((avatar) => (
+              <button
+                key={avatar}
+                type="button"
+                className={form.avatarEmoji === avatar ? "avatar-chip active" : "avatar-chip"}
+                onClick={() => setForm((f) => ({ ...f, avatarEmoji: avatar }))}
+              >
+                <span aria-hidden>{avatar}</span>
+              </button>
+            ))}
+          </div>
+        </label>
+        <label>
+          Front standing photo (required)
+          <input
+            type="file"
+            accept="image/*"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const image = await fileToDataUrl(file);
+              setForm((f) => ({ ...f, frontImageUrl: image }));
+            }}
+            required={!form.frontImageUrl}
+          />
+        </label>
+        {form.frontImageUrl ? (
+          <div style={{ gridColumn: "1 / -1", maxWidth: 280 }}>
+            <img src={form.frontImageUrl} alt="Front standing preview" style={{ width: "100%", borderRadius: 12, border: "1px solid #d8c2a8" }} />
+          </div>
+        ) : null}
         <label>
           Name
           <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />

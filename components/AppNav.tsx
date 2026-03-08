@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCurrentUser, logout, onAuthChange } from "@/lib/auth";
+import { loadProfile } from "@/lib/persistence";
 
 const links = [
   ["Home", "/"],
@@ -15,15 +16,28 @@ const links = [
 
 export function AppNav() {
   const [userName, setUserName] = useState("");
+  const [avatarEmoji, setAvatarEmoji] = useState("✨");
 
   useEffect(() => {
-    const sync = () => {
+    const sync = async () => {
       const user = getCurrentUser();
       setUserName(user?.name || "");
+      if (!user) {
+        setAvatarEmoji("✨");
+        return;
+      }
+      const profile = await loadProfile(user.id);
+      setAvatarEmoji(profile?.avatarEmoji || "✨");
     };
-    sync();
-    return onAuthChange((user) => {
+    void sync();
+    return onAuthChange(async (user) => {
       setUserName(user?.name || "");
+      if (!user) {
+        setAvatarEmoji("✨");
+        return;
+      }
+      const profile = await loadProfile(user.id);
+      setAvatarEmoji(profile?.avatarEmoji || "✨");
     });
   }, []);
 
@@ -37,6 +51,7 @@ export function AppNav() {
         ))}
       </nav>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="avatar-nav" aria-label="Selected avatar">{avatarEmoji}</span>
         {userName ? <span className="small">Signed in as {userName}</span> : null}
         {!userName ? (
           <Link href="/login">

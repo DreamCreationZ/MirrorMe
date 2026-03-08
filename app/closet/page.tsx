@@ -26,6 +26,7 @@ export default function ClosetPage() {
   const [uploadPreview, setUploadPreview] = useState("");
   const [normalizing, setNormalizing] = useState(false);
   const [normalizeNote, setNormalizeNote] = useState("");
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -41,23 +42,28 @@ export default function ClosetPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    setStatus("");
+    if (!userId) {
+      setStatus("Session not ready yet. Please wait 2 seconds and try again.");
+      return;
+    }
 
     const payload: ClosetItem = {
       id: uid(),
       category: form.category,
-      name: form.name,
-      color: form.color,
+      name: form.name.trim() || `${form.category} item`,
+      color: form.color.trim() || "not set",
       brand: form.brand || undefined,
       imageUrl: form.imageUrl || undefined,
       tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
       createdAt: Date.now()
     };
 
-    if (!userId) return;
-
     await addClosetItem(userId, payload);
     setItems((prev) => [payload, ...prev]);
     setForm((f) => ({ ...f, name: "", color: "", brand: "", tags: "", imageUrl: "" }));
+    setUploadPreview("");
+    setStatus("Added to closet and hanger.");
   }
 
   async function fileToDataUrl(file: File): Promise<string> {
@@ -178,11 +184,11 @@ export default function ClosetPage() {
           </label>
           <label>
             Name
-            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
+            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Optional. Auto-filled if empty." />
           </label>
           <label>
             Color
-            <input value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} required />
+            <input value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} placeholder="Optional. Auto-filled if empty." />
           </label>
           <label>
             Brand
@@ -213,6 +219,7 @@ export default function ClosetPage() {
             Skip for Now
           </button>
         </form>
+        {status ? <p className="small">{status}</p> : null}
       </article>
 
       <article className="card">

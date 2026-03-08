@@ -41,10 +41,6 @@ type SpeechRec = {
 
 type SpeechRecCtor = new () => SpeechRec;
 
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function speechText(input: string) {
   return input
     .replace(/\n+/g, ". ")
@@ -55,23 +51,6 @@ function speechText(input: string) {
     .replace(/Time-saving tip:/gi, "Quick tip:")
     .replace(/\s{2,}/g, " ")
     .trim();
-}
-
-function extractWakeCommand(text: string, stylistName: string): string | null {
-  const raw = text.trim();
-  const normalized = raw.toLowerCase().replace(/[.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
-  const name = stylistName.trim().toLowerCase();
-  if (!normalized || !name) return null;
-  const parts = normalized.split(" ").filter(Boolean);
-  const startsDirect = parts[0] === name;
-  const startsPrefixed =
-    (parts[0] === "hey" || parts[0] === "hi" || parts[0] === "ok") &&
-    parts[1] === name;
-  if (!startsDirect && !startsPrefixed) return null;
-
-  const originalParts = raw.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
-  const command = startsDirect ? originalParts.slice(1).join(" ") : originalParts.slice(2).join(" ");
-  return command.trim();
 }
 
 export default function StylistPage() {
@@ -244,14 +223,6 @@ export default function StylistPage() {
       selectedVoice ||
       (wantsFemale ? femaleLangVoice || femaleAnyVoice || langVoice : langVoice) ||
       voices[0];
-    if (wantsFemale && !pickedVoice) {
-      setTalkStatus("No female voice found on this device. Add a female system voice and retry.");
-      return;
-    }
-    if (wantsFemale && pickedVoice && !femaleHint.test(pickedVoice.name.toLowerCase())) {
-      setTalkStatus("Female voice not available in browser voices. Please pick/install a female voice.");
-      return;
-    }
     if (pickedVoice) {
       utterance.voice = pickedVoice;
       utterance.lang = pickedVoice.lang;
@@ -415,20 +386,10 @@ export default function StylistPage() {
     const messageText = (overrideText ?? input).trim();
     if ((!messageText && !pendingImages.length) || loading) return;
 
-    const command = extractWakeCommand(messageText, stylistName);
-    if (command === null) {
-      setTalkStatus(`No reply. Start with "${stylistName}" first.`);
-      return;
-    }
-    if (!command && !pendingImages.length) {
-      setTalkStatus(`Say "${stylistName}" then your request.`);
-      return;
-    }
-
     const images = pendingImages;
     const userMessage: StylistMessage = {
       role: "user",
-      content: command || "Please review these images honestly.",
+      content: messageText || "Please review these images honestly.",
       images
     };
 

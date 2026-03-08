@@ -84,6 +84,8 @@ export default function LoginPage() {
           age: 24,
           heightCm: Number(heightCm) || 165,
           skinTone: skinTone.trim(),
+          avatarEmoji: "👩",
+          frontImageUrl: "",
           country: country.trim(),
           state: stateName.trim(),
           pincode: pincode.trim(),
@@ -97,7 +99,8 @@ export default function LoginPage() {
         await saveProfile(user.id, payload);
       }
       const profile = await loadProfile(user.id);
-      router.push(profile ? "/occasion" : "/onboarding");
+      const needsMandatoryOnboarding = !profile || !profile.frontImageUrl;
+      router.push(needsMandatoryOnboarding ? "/onboarding" : "/occasion");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Authentication failed.");
     }

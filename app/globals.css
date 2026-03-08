@@ -1,10 +1,10 @@
 :root {
-  --bg: #f7f5f2;
-  --panel: #fffaf4;
+  --bg: #f4efe7;
+  --panel: #fffaf2;
   --ink: #1d1b19;
   --muted: #6a635a;
-  --brand: #8b3a2f;
-  --brand-2: #b95c4b;
+  --brand: #8f2f25;
+  --brand-2: #cb6b4e;
   --ok: #1e6f4f;
   --bad: #8e2323;
 }
@@ -17,8 +17,9 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(circle at 10% 10%, #f2e7d8 0%, transparent 40%),
-    radial-gradient(circle at 90% 20%, #efe0d3 0%, transparent 35%),
+    radial-gradient(circle at 8% 8%, rgba(255, 212, 122, 0.32) 0%, transparent 34%),
+    radial-gradient(circle at 92% 12%, rgba(255, 120, 90, 0.18) 0%, transparent 37%),
+    radial-gradient(circle at 50% 105%, rgba(214, 177, 120, 0.2) 0%, transparent 45%),
     var(--bg);
   font-family: "Avenir Next", "Trebuchet MS", sans-serif;
 }
@@ -39,7 +40,10 @@ a {
   border: 1px solid #ead8c4;
   border-radius: 16px;
   padding: 20px;
-  box-shadow: 0 8px 30px rgba(84, 45, 15, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(255, 238, 215, 0.7),
+    0 10px 36px rgba(84, 45, 15, 0.1),
+    0 0 45px rgba(255, 194, 104, 0.12);
 }
 
 h1, h2, h3 {
@@ -117,6 +121,7 @@ button {
   color: #fff;
   cursor: pointer;
   font-weight: 600;
+  box-shadow: 0 8px 16px rgba(143, 47, 37, 0.24);
 }
 
 button.secondary {
@@ -235,4 +240,36 @@ button.secondary {
   border-radius: 8px;
   padding: 12px;
   background: #fff6ea;
+}
+
+.avatar-nav {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #e2c39c;
+  background: radial-gradient(circle at 30% 20%, #fff7df 0%, #f3e0bf 75%);
+}
+
+.avatar-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.avatar-chip {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #e2c39c;
+  background: #fff5e5;
+  box-shadow: none;
+  color: #2d1d13;
+  padding: 0;
+}
+
+.avatar-chip.active {
+  border-color: #b55d43;
+  background: linear-gradient(135deg, #fff3dc, #ffe6cc);
 }

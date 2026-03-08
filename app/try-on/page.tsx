@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
+import { loadProfile } from "@/lib/persistence";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,11 +34,16 @@ export default function TryOnPage() {
   const garmentImage = useMemo(() => garmentPreview || garmentImageUrl, [garmentPreview, garmentImageUrl]);
 
   useEffect(() => {
-    waitForAuthInit().then((user) => {
+    waitForAuthInit().then(async (user) => {
       if (!user) return;
+      const profile = await loadProfile(user.id);
+      if (profile?.frontImageUrl) {
+        setPersonImageUrl(profile.frontImageUrl);
+        setPersonPreview("");
+      }
       const preset = localStore.getTryOnPreset(user.id);
       if (!preset) return;
-      if (preset.personImage && !personImageUrl) setPersonImageUrl(preset.personImage);
+      if (preset.personImage && !profile?.frontImageUrl && !personImageUrl) setPersonImageUrl(preset.personImage);
       if (preset.garmentImages.length) {
         setGarmentImageUrl(preset.garmentImages[0]);
         setPresetGarments(preset.garmentImages.slice(1));
@@ -200,7 +206,7 @@ export default function TryOnPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!personImage || !garmentImage) {
-      setStatus("Please provide both user photo and garment photo.");
+      setStatus("Please upload your outfit piece photo. Your saved profile photo is used automatically.");
       return;
     }
 
@@ -248,7 +254,7 @@ export default function TryOnPage() {
       <article className="card">
         <h1>Virtual Try-On</h1>
         <p className="small">
-          Upload person photo + garment photo. Job runs asynchronously and updates when the model completes.
+          Upload only garment photo. Your saved onboarding front photo is used automatically.
         </p>
 
         <form onSubmit={onSubmit} className="grid">
@@ -261,26 +267,7 @@ export default function TryOnPage() {
               <option value="dresses">Full dress / Saree / Gown</option>
             </select>
           </label>
-          <label>
-            User photo upload
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => onFileChange(e, setPersonPreview, setPersonImageUrl)}
-            />
-          </label>
-          <label>
-            User photo URL (optional alternative)
-            <input
-              value={personImageUrl}
-              onChange={(e) => {
-                setPersonImageUrl(e.target.value);
-                if (e.target.value) {
-                  setPersonPreview("");
-                }
-              }}
-            />
-          </label>
+          <p className="small">Using your saved front profile photo for overlay.</p>
           <label>
             Garment photo upload
             <input
@@ -315,7 +302,7 @@ export default function TryOnPage() {
         </form>
 
         {status ? <p className="small">{status}</p> : null}
-        <p className="small">Both upload and URL inputs are supported. Uploaded files are sent directly for try-on.</p>
+        <p className="small">If onboarding photo is missing, open Profile page and upload front standing photo.</p>
       </article>
 
       <article className="card" style={{ gridColumn: "1 / -1" }}>
