@@ -1,11 +1,13 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
 import { loadCloset, loadProfile, saveProfile } from "@/lib/persistence";
 import { AppSettings, ClosetItem, UserProfile } from "@/types/models";
+import { LuxShowcase } from "@/components/LuxShowcase";
 
 const defaultSettings: AppSettings = {
   preferredVendors: [],
@@ -45,6 +47,8 @@ function weatherSummary(code?: number, temp?: number) {
 export default function WelcomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
+  const [authResolved, setAuthResolved] = useState(false);
+  const [guestMode, setGuestMode] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [closet, setCloset] = useState<ClosetItem[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
@@ -57,6 +61,14 @@ export default function WelcomePage() {
   const [weather, setWeather] = useState("Loading weather...");
   const [doorsOpen, setDoorsOpen] = useState(false);
   const [showAllCloset, setShowAllCloset] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [phraseIndex, setPhraseIndex] = useState(0);
+
+  const guestPhrases = [
+    "Hey, welcome to your personal dressing room.",
+    "Looks like you are not checked in yet.",
+    "Please log in and I will take you on a quick tour."
+  ];
 
   const recommendations = useMemo(() => closet.slice(0, 5), [closet]);
 
@@ -79,9 +91,11 @@ export default function WelcomePage() {
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
       if (!user) {
-        router.replace("/login");
+        setGuestMode(true);
+        setAuthResolved(true);
         return;
       }
+      setGuestMode(false);
       setUserId(user.id);
       const loadedProfile = await loadProfile(user.id);
       if (!loadedProfile) {
@@ -94,8 +108,25 @@ export default function WelcomePage() {
       setCloset(loadedCloset);
       const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
       setSettings(loadedSettings);
+      setAuthResolved(true);
     });
   }, [router]);
+
+  useEffect(() => {
+    if (!guestMode) return;
+    const phrase = guestPhrases[phraseIndex] || "";
+    let i = 0;
+    setTyped("");
+    const timer = setInterval(() => {
+      i += 1;
+      setTyped(phrase.slice(0, i));
+      if (i >= phrase.length) {
+        clearInterval(timer);
+        setTimeout(() => setPhraseIndex((v) => (v + 1) % guestPhrases.length), 900);
+      }
+    }, 26);
+    return () => clearInterval(timer);
+  }, [guestMode, phraseIndex]);
 
   useEffect(() => {
     if (!authOk || !profile) return;
@@ -171,6 +202,32 @@ export default function WelcomePage() {
 
   return (
     <section className="grid phone-grid">
+      {!authResolved ? (
+        <article className="card phone-card">
+          <h1>Welcome</h1>
+          <p className="small">Preparing your virtual room...</p>
+        </article>
+      ) : null}
+
+      {guestMode ? (
+        <>
+          <article className="card phone-card mirror-hero">
+            <h1>Welcome</h1>
+            <p className="welcome-dynamic">{typed}<span className="welcome-cursor">|</span></p>
+            <div className="grid cols-2" style={{ marginTop: 10 }}>
+              <Link href="/login">
+                <button>Check In</button>
+              </Link>
+              <Link href="/login">
+                <button className="secondary">Take the Tour</button>
+              </Link>
+            </div>
+          </article>
+          <LuxShowcase />
+        </>
+      ) : null}
+
+      {!guestMode && authResolved ? (
       <article className="card phone-card">
         <h1>Welcome</h1>
         {!authOk ? (
@@ -268,7 +325,7 @@ export default function WelcomePage() {
         {frontImageUrl ? <img src={frontImageUrl} alt="Front profile" className="front-preview" /> : null}
         {status ? <p className="small">{status}</p> : null}
       </article>
+      ) : null}
     </section>
   );
 }
-

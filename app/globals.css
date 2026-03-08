@@ -270,6 +270,23 @@ button.secondary {
   box-shadow: 0 22px 50px rgba(0, 0, 0, 0.45);
 }
 
+.welcome-dynamic {
+  min-height: 58px;
+  font-size: 17px;
+  line-height: 1.45;
+  color: #f2f6ff;
+  margin: 0;
+}
+
+.welcome-cursor {
+  animation: blinkCursor 0.8s step-end infinite;
+}
+
+@keyframes blinkCursor {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0; }
+}
+
 .lux-phone-grid {
   display: grid;
   gap: 14px;
