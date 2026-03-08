@@ -53,6 +53,20 @@ function speechText(input: string) {
     .trim();
 }
 
+function pickPreferredVoice(
+  voices: SpeechSynthesisVoice[],
+  language: string,
+  femalePreferred: boolean
+): SpeechSynthesisVoice | undefined {
+  const langHint = language === "Hindi" ? "hi" : "en";
+  const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female|aria|siri)/i;
+  const femaleLang = voices.find((v) => v.lang.toLowerCase().startsWith(langHint) && femaleHint.test(v.name.toLowerCase()));
+  const femaleAny = voices.find((v) => femaleHint.test(v.name.toLowerCase()));
+  const langAny = voices.find((v) => v.lang.toLowerCase().startsWith(langHint));
+  if (femalePreferred) return femaleLang || femaleAny || langAny || voices[0];
+  return langAny || voices[0];
+}
+
 export default function StylistPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -172,13 +186,9 @@ export default function StylistPage() {
 
   useEffect(() => {
     if (!availableVoices.length || selectedVoiceUri) return;
-    const femalePriority = /(samantha|veena|karen|moira|tessa|zira|google uk english female|female|woman|ava|serena)/i;
-    const enFemale = availableVoices.find((v) => /en/i.test(v.lang) && femalePriority.test(v.name));
-    const hiFemale = availableVoices.find((v) => /hi/i.test(v.lang) && femalePriority.test(v.name));
-    const fallbackFemale = availableVoices.find((v) => femalePriority.test(v.name));
-    const picked = enFemale || hiFemale || fallbackFemale || availableVoices[0];
+    const picked = pickPreferredVoice(availableVoices, preferredLanguage, true);
     if (picked) setSelectedVoiceUri(picked.voiceURI);
-  }, [availableVoices, selectedVoiceUri]);
+  }, [availableVoices, preferredLanguage, selectedVoiceUri]);
 
   function persist(next: StylistMessage[]) {
     setMessages(next);
@@ -208,27 +218,19 @@ export default function StylistPage() {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(speechText(text));
     const voices = availableVoices.length ? availableVoices : window.speechSynthesis.getVoices();
-    const langHint = preferredLanguage === "Hindi" ? "hi" : "en";
     const stylistLower = stylistName.toLowerCase();
     const profileLower = (profile?.name || "").toLowerCase();
     const wantsFemale =
       /(meera|sera|sara|riya|priya|anita|swati)/i.test(stylistLower) ||
       /(swati|priya|riya|anita)/i.test(profileLower);
-    const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female)/i;
     const selectedVoice = selectedVoiceUri ? voices.find((v) => v.voiceURI === selectedVoiceUri) : null;
-    const femaleLangVoice = voices.find((v) => v.lang.toLowerCase().startsWith(langHint) && femaleHint.test(v.name.toLowerCase()));
-    const femaleAnyVoice = voices.find((v) => femaleHint.test(v.name.toLowerCase()));
-    const langVoice = voices.find((v) => v.lang.toLowerCase().startsWith(langHint));
-    const pickedVoice =
-      selectedVoice ||
-      (wantsFemale ? femaleLangVoice || femaleAnyVoice || langVoice : langVoice) ||
-      voices[0];
+    const pickedVoice = selectedVoice || pickPreferredVoice(voices, preferredLanguage, wantsFemale);
     if (pickedVoice) {
       utterance.voice = pickedVoice;
       utterance.lang = pickedVoice.lang;
     }
     utterance.rate = preferredLanguage === "Hindi" ? 0.92 : 0.94;
-    utterance.pitch = wantsFemale ? 1.06 : 1.0;
+    utterance.pitch = wantsFemale ? 1.18 : 1.0;
     utterance.volume = 1;
     utterance.onstart = () => {
       speakingRef.current = true;

@@ -14,6 +14,16 @@ function greeting(stylistName: string, userName: string) {
   return `Hey ${name}, I am ${stylistName}, your personal stylist. You can rename me if you want. Upload your front standing photo and I will style you better.`;
 }
 
+function preferredFemaleVoice(voices: SpeechSynthesisVoice[]) {
+  const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female)/i;
+  return (
+    voices.find((v) => /en|hi/i.test(v.lang) && femaleHint.test(v.name)) ||
+    voices.find((v) => femaleHint.test(v.name)) ||
+    voices.find((v) => /en|hi/i.test(v.lang)) ||
+    voices[0]
+  );
+}
+
 export default function WelcomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -55,8 +65,14 @@ export default function WelcomePage() {
       setChat([{ role: "assistant", text }]);
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         const speech = new SpeechSynthesisUtterance(text);
+        const voices = window.speechSynthesis.getVoices();
+        const voice = preferredFemaleVoice(voices);
+        if (voice) {
+          speech.voice = voice;
+          speech.lang = voice.lang;
+        }
         speech.rate = 0.96;
-        speech.pitch = 1.06;
+        speech.pitch = 1.16;
         speech.onstart = () => setSpeaking(true);
         speech.onend = () => setSpeaking(false);
         window.speechSynthesis.cancel();
@@ -95,8 +111,14 @@ export default function WelcomePage() {
     setChat((prev) => [...prev, { role: "assistant", text: `Done. My name is now ${cleaned}.` }]);
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       const speech = new SpeechSynthesisUtterance(`Done. My name is now ${cleaned}.`);
+      const voices = window.speechSynthesis.getVoices();
+      const voice = preferredFemaleVoice(voices);
+      if (voice) {
+        speech.voice = voice;
+        speech.lang = voice.lang;
+      }
       speech.rate = 0.96;
-      speech.pitch = 1.08;
+      speech.pitch = 1.16;
       speech.onstart = () => setSpeaking(true);
       speech.onend = () => setSpeaking(false);
       window.speechSynthesis.cancel();
@@ -135,6 +157,9 @@ export default function WelcomePage() {
         <div className="receptionist">
           <div className={speaking ? "assistant-shell speaking" : "assistant-shell"} aria-hidden>
             <div className="assistant-aura" />
+            {profile?.avatarImageUrl ? (
+              <img src={profile.avatarImageUrl} alt="Selected avatar" className="assistant-avatar-art" />
+            ) : (
             <svg viewBox="0 0 220 320" className="assistant-svg" role="img" aria-label="Virtual stylist assistant">
               <defs>
                 <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
@@ -162,6 +187,7 @@ export default function WelcomePage() {
               <path d="M156 157 C170 178, 176 196, 180 218" stroke="url(#skin)" strokeWidth="13" strokeLinecap="round" />
               <path d="M95 286 L86 308 M125 286 L134 308" stroke="#261c16" strokeWidth="10" strokeLinecap="round" />
             </svg>
+            )}
             <div className="assistant-wave">
               <span />
               <span />

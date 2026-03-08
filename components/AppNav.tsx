@@ -18,6 +18,7 @@ const links = [
 export function AppNav() {
   const [userName, setUserName] = useState("");
   const [avatarEmoji, setAvatarEmoji] = useState("✨");
+  const [avatarImageUrl, setAvatarImageUrl] = useState("");
 
   useEffect(() => {
     const sync = async () => {
@@ -25,20 +26,24 @@ export function AppNav() {
       setUserName(user?.name || "");
       if (!user) {
         setAvatarEmoji("✨");
+        setAvatarImageUrl("");
         return;
       }
       const profile = await loadProfile(user.id);
       setAvatarEmoji(profile?.avatarEmoji || "✨");
+      setAvatarImageUrl(profile?.avatarImageUrl || "");
     };
     void sync();
     return onAuthChange(async (user) => {
       setUserName(user?.name || "");
       if (!user) {
         setAvatarEmoji("✨");
+        setAvatarImageUrl("");
         return;
       }
       const profile = await loadProfile(user.id);
       setAvatarEmoji(profile?.avatarEmoji || "✨");
+      setAvatarImageUrl(profile?.avatarImageUrl || "");
     });
   }, []);
 
@@ -52,7 +57,9 @@ export function AppNav() {
         ))}
       </nav>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="avatar-nav" aria-label="Selected avatar">{avatarEmoji}</span>
+        <span className="avatar-nav" aria-label="Selected avatar">
+          {avatarImageUrl ? <img src={avatarImageUrl} alt="Avatar" className="avatar-nav-img" /> : avatarEmoji}
+        </span>
         {userName ? <span className="small">Signed in as {userName}</span> : null}
         {!userName ? (
           <Link href="/login">

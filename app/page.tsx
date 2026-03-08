@@ -57,9 +57,6 @@ export default function HomePage() {
           </Link>
         </div>
       ) : null}
-      <p className="small">
-        Virtual try-on is included via an API-ready pipeline so you can plug in your preferred realistic model provider.
-      </p>
     </section>
   );
 }

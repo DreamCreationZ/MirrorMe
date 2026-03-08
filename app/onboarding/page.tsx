@@ -11,7 +11,24 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-const AVATARS = ["👩", "👨", "🧑", "👩‍💼", "👨‍💼", "🧕", "👩‍🎤", "👨‍🎨"] as const;
+function avatarSvg({ skin, hair, shirt, eyes }: { skin: string; hair: string; shirt: string; eyes: string }) {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>
+  <rect width='200' height='200' rx='26' fill='#1a1f2b'/>
+  <circle cx='100' cy='78' r='42' fill='${skin}'/>
+  <path d='M54 78c2-35 90-36 92 0v16H54z' fill='${hair}'/>
+  <rect x='54' y='126' width='92' height='56' rx='20' fill='${shirt}'/>
+  <circle cx='84' cy='80' r='5' fill='${eyes}'/><circle cx='116' cy='80' r='5' fill='${eyes}'/>
+  <path d='M84 102q16 10 32 0' stroke='#9c5e53' stroke-width='4' fill='none' stroke-linecap='round'/>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+const AVATARS = [
+  { id: "a1", imageUrl: avatarSvg({ skin: "#d3a17e", hair: "#1b2030", shirt: "#8c2f3c", eyes: "#2d4a7f" }) },
+  { id: "a2", imageUrl: avatarSvg({ skin: "#f0c5a3", hair: "#25282e", shirt: "#355f86", eyes: "#4e311f" }) },
+  { id: "a3", imageUrl: avatarSvg({ skin: "#a97552", hair: "#121827", shirt: "#4a7a4a", eyes: "#1c2f55" }) },
+  { id: "a4", imageUrl: avatarSvg({ skin: "#e5b18c", hair: "#3a2a1f", shirt: "#6e517f", eyes: "#26375a" }) }
+] as const;
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -21,7 +38,8 @@ export default function OnboardingPage() {
     age: 24,
     heightCm: 165,
     skinTone: "medium",
-    avatarEmoji: "👩",
+    avatarEmoji: "a1",
+    avatarImageUrl: AVATARS[0].imageUrl,
     frontImageUrl: "",
     country: "",
     state: "",
@@ -53,6 +71,7 @@ export default function OnboardingPage() {
         heightCm: profile.heightCm,
         skinTone: profile.skinTone,
         avatarEmoji: profile.avatarEmoji || "👩",
+        avatarImageUrl: profile.avatarImageUrl || AVATARS[0].imageUrl,
         frontImageUrl: profile.frontImageUrl || "",
         country: profile.country || "",
         state: profile.state || "",
@@ -106,6 +125,10 @@ export default function OnboardingPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!userId) {
+      setStatus("Session is initializing. Please wait 2 seconds and click save again.");
+      return;
+    }
     setStatus("Saving profile...");
 
     const payload: UserProfile = {
@@ -113,8 +136,6 @@ export default function OnboardingPage() {
       ...form,
       createdAt: Date.now()
     };
-
-    if (!userId) return;
 
     await saveProfile(userId, payload);
     setExistingProfile(true);
@@ -138,12 +159,12 @@ export default function OnboardingPage() {
           <div className="avatar-picker">
             {AVATARS.map((avatar) => (
               <button
-                key={avatar}
+                key={avatar.id}
                 type="button"
-                className={form.avatarEmoji === avatar ? "avatar-chip active" : "avatar-chip"}
-                onClick={() => setForm((f) => ({ ...f, avatarEmoji: avatar }))}
+                className={form.avatarEmoji === avatar.id ? "avatar-chip active avatar-chip-portrait" : "avatar-chip avatar-chip-portrait"}
+                onClick={() => setForm((f) => ({ ...f, avatarEmoji: avatar.id, avatarImageUrl: avatar.imageUrl }))}
               >
-                <span aria-hidden>{avatar}</span>
+                <img src={avatar.imageUrl} alt="Avatar option" className="avatar-portrait" />
               </button>
             ))}
           </div>

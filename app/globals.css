@@ -251,61 +251,79 @@ button.secondary {
   font-weight: 600;
 }
 
-.closet-hanger-grid {
+.wardrobe-grid {
   display: grid;
   gap: 14px;
 }
 
 @media (min-width: 800px) {
-  .closet-hanger-grid {
+  .wardrobe-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-.hanger-card {
+.wardrobe-card {
   background: linear-gradient(180deg, rgba(28, 33, 44, 0.9) 0%, rgba(19, 24, 34, 0.96) 100%);
 }
 
-.hanger-photo-wrap {
+.wardrobe-photo-wrap {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   background:
     radial-gradient(circle at 15% 10%, rgba(228, 191, 131, 0.24) 0, transparent 45%),
     linear-gradient(180deg, #1b212d, #131924);
-  min-height: 220px;
+  min-height: 260px;
   display: grid;
   place-items: center;
-  padding: 24px 14px 12px;
+  padding: 42px 18px 28px;
   margin-bottom: 10px;
 }
 
-.hanger-hook {
+.wardrobe-shelf-top,
+.wardrobe-shelf-bottom {
   position: absolute;
-  top: 8px;
-  width: 32px;
-  height: 16px;
-  border: 2px solid #b49674;
-  border-bottom: none;
-  border-radius: 16px 16px 0 0;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #c8a97e, #8a6b46);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
 }
 
-.hanger-rail {
-  position: absolute;
-  top: 24px;
-  width: 80%;
-  height: 2px;
-  background: #7f89a0;
+.wardrobe-shelf-top {
+  top: 12px;
 }
 
-.hanger-photo {
+.wardrobe-shelf-bottom {
+  bottom: 12px;
+}
+
+.wardrobe-side {
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  width: 8px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #b89466, #6f5539);
+}
+
+.wardrobe-side.left {
+  left: 10px;
+}
+
+.wardrobe-side.right {
+  right: 10px;
+}
+
+.wardrobe-photo {
   width: 100%;
-  max-height: 170px;
+  max-height: 176px;
   object-fit: contain;
-  filter: contrast(1.04) saturate(1.02);
+  filter: contrast(1.06) saturate(1.03);
 }
 
-.hanger-placeholder {
+.wardrobe-placeholder {
   border: 1px dashed rgba(255, 255, 255, 0.22);
   border-radius: 8px;
   padding: 12px;
@@ -320,6 +338,13 @@ button.secondary {
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: radial-gradient(circle at 30% 20%, #2a3346 0%, #1a2131 75%);
+}
+
+.avatar-nav-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 999px;
 }
 
 .avatar-picker {
@@ -337,6 +362,18 @@ button.secondary {
   box-shadow: none;
   color: #f4f6ff;
   padding: 0;
+}
+
+.avatar-chip-portrait {
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+}
+
+.avatar-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .avatar-chip.active {
@@ -464,6 +501,16 @@ button.secondary {
   width: 130px;
   height: 195px;
   z-index: 2;
+}
+
+.assistant-avatar-art {
+  width: 132px;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  z-index: 2;
+  box-shadow: 0 0 22px rgba(228, 191, 131, 0.28);
 }
 
 .assistant-wave {

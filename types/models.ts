@@ -7,6 +7,7 @@ export interface UserProfile {
   heightCm: number;
   skinTone: string;
   avatarEmoji?: string;
+  avatarImageUrl?: string;
   frontImageUrl?: string;
   country: string;
   state: string;

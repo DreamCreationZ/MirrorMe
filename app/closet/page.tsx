@@ -14,7 +14,7 @@ export default function ClosetPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [items, setItems] = useState<ClosetItem[]>([]);
-  const [viewMode, setViewMode] = useState<"hanger" | "list">("hanger");
+  const [viewMode, setViewMode] = useState<"wardrobe" | "list">("wardrobe");
   const [form, setForm] = useState({
     category: "top" as ClosetItem["category"],
     name: "",
@@ -63,7 +63,7 @@ export default function ClosetPage() {
     setItems((prev) => [payload, ...prev]);
     setForm((f) => ({ ...f, name: "", color: "", brand: "", tags: "", imageUrl: "" }));
     setUploadPreview("");
-    setStatus("Added to closet and hanger.");
+    setStatus("Added to your wardrobe.");
   }
 
   async function fileToDataUrl(file: File): Promise<string> {
@@ -203,10 +203,10 @@ export default function ClosetPage() {
             <input value={form.imageUrl} onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))} />
           </label>
           <label>
-            Upload Garment Photo (auto organized for virtual hanger)
+            Upload Garment Photo (auto organized in wardrobe shelves)
             <input type="file" accept="image/*" onChange={onImageUpload} />
           </label>
-          {normalizing ? <p className="small">Normalizing image for clean hanger layout...</p> : null}
+          {normalizing ? <p className="small">Normalizing image for clean wardrobe layout...</p> : null}
           {normalizeNote ? <p className="small">{normalizeNote}</p> : null}
           {uploadPreview ? (
             <div style={{ border: "1px solid #e5d4bf", borderRadius: 10, padding: 8, marginBottom: 10 }}>
@@ -225,25 +225,27 @@ export default function ClosetPage() {
       <article className="card phone-card">
         <h2>Your Closet ({items.length})</h2>
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <button type="button" className={viewMode === "hanger" ? "" : "secondary"} onClick={() => setViewMode("hanger")}>
-            Virtual Hanger View
+          <button type="button" className={viewMode === "wardrobe" ? "" : "secondary"} onClick={() => setViewMode("wardrobe")}>
+            Wardrobe View
           </button>
           <button type="button" className={viewMode === "list" ? "" : "secondary"} onClick={() => setViewMode("list")}>
             List View
           </button>
         </div>
-        <div className={viewMode === "hanger" ? "closet-hanger-grid" : "grid"}>
+        <div className={viewMode === "wardrobe" ? "wardrobe-grid" : "grid"}>
           {items.map((item) => (
-            <div key={item.id} className={viewMode === "hanger" ? "hanger-card" : ""} style={{ border: "1px solid #e7d4be", borderRadius: 12, padding: 12 }}>
-              {viewMode === "hanger" ? (
-                <div className="hanger-photo-wrap">
-                  <div className="hanger-hook" />
-                  <div className="hanger-rail" />
+            <div key={item.id} className={viewMode === "wardrobe" ? "wardrobe-card" : ""} style={{ border: "1px solid #e7d4be", borderRadius: 12, padding: 12 }}>
+              {viewMode === "wardrobe" ? (
+                <div className="wardrobe-photo-wrap">
+                  <div className="wardrobe-shelf-top" />
+                  <div className="wardrobe-side left" />
+                  <div className="wardrobe-side right" />
                   {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} className="hanger-photo" />
+                    <img src={item.imageUrl} alt={item.name} className="wardrobe-photo" />
                   ) : (
-                    <div className="hanger-placeholder small">No image uploaded</div>
+                    <div className="wardrobe-placeholder small">No image uploaded</div>
                   )}
+                  <div className="wardrobe-shelf-bottom" />
                 </div>
               ) : null}
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>

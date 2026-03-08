@@ -10,7 +10,7 @@ export async function saveProfile(userId: string, profile: UserProfile): Promise
 
   if (!firebaseReady() || !db) return;
 
-  await setDoc(doc(db, "users", userId), profile, { merge: true });
+  void setDoc(doc(db, "users", userId), profile, { merge: true }).catch(() => undefined);
 }
 
 export async function loadProfile(userId: string): Promise<UserProfile | null> {
@@ -23,7 +23,7 @@ export async function addClosetItem(userId: string, item: ClosetItem): Promise<v
 
   if (!firebaseReady() || !db) return;
 
-  await setDoc(doc(db, "users", userId, "closet", item.id), item, { merge: true });
+  void setDoc(doc(db, "users", userId, "closet", item.id), item, { merge: true }).catch(() => undefined);
 }
 
 export async function loadCloset(userId: string): Promise<ClosetItem[]> {
@@ -61,5 +61,5 @@ export async function markClosetItemWorn(userId: string, itemId: string): Promis
   const changed = updated.find((item) => item.id === itemId);
   if (!changed) return;
 
-  await setDoc(doc(db, "users", userId, "closet", itemId), changed, { merge: true });
+  void setDoc(doc(db, "users", userId, "closet", itemId), changed, { merge: true }).catch(() => undefined);
 }
