@@ -59,9 +59,16 @@ export default function StylistPage() {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [handsFreeTalk, setHandsFreeTalk] = useState(true);
+  const [talkStatus, setTalkStatus] = useState("");
+  const [voiceReady, setVoiceReady] = useState(false);
 
   const recognizerRef = useRef<SpeechRec | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
+  const modeRef = useRef(mode);
+  const handsFreeRef = useRef(handsFreeTalk);
+  const loadingRef = useRef(loading);
+  const listeningRef = useRef(listening);
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -107,8 +114,33 @@ export default function StylistPage() {
         recognizerRef.current = null;
       }
       setListening(false);
+      setTalkStatus("");
     }
   }, [mode]);
+
+  useEffect(() => {
+    if (mode === "talk" && handsFreeTalk && !loadingRef.current && !listeningRef.current) {
+      const timer = setTimeout(() => startVoiceInput(), 300);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [handsFreeTalk, mode]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    handsFreeRef.current = handsFreeTalk;
+  }, [handsFreeTalk]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
 
   function persist(next: StylistMessage[]) {
     setMessages(next);
@@ -123,11 +155,22 @@ export default function StylistPage() {
   function speak(text: string) {
     if (mode !== "talk") return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (!voiceReady) {
+      setTalkStatus("Voice is not enabled yet. Click Enable Voice once.");
+      return;
+    }
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text.replace(/\n+/g, " "));
     utterance.rate = 1;
     utterance.pitch = 1;
+    utterance.onstart = () => setTalkStatus("Speaking...");
+    utterance.onerror = () => setTalkStatus("Speech output failed. Click Enable Voice and try again.");
+    utterance.onend = () => {
+      if (modeRef.current === "talk" && handsFreeRef.current && !loadingRef.current && !listeningRef.current) {
+        startVoiceInput();
+      }
+    };
     window.speechSynthesis.speak(utterance);
   }
 
@@ -165,6 +208,9 @@ export default function StylistPage() {
   function setConversationMode(nextMode: "chat" | "talk") {
     setMode(nextMode);
     persistConfig({ name: stylistName, mode: nextMode, preferredLanguage, createdAt: Date.now() });
+    if (nextMode === "talk") {
+      enableVoice();
+    }
   }
 
   function setLanguage(nextLanguage: string) {
@@ -172,8 +218,35 @@ export default function StylistPage() {
     persistConfig({ name: stylistName, mode, preferredLanguage: nextLanguage, createdAt: Date.now() });
   }
 
+  function enableVoice() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setTalkStatus("Speech output is not supported in this browser.");
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const unlock = new SpeechSynthesisUtterance("Voice enabled.");
+      unlock.volume = 1;
+      unlock.rate = 1;
+      unlock.pitch = 1;
+      unlock.onend = () => {
+        setVoiceReady(true);
+        setTalkStatus("Voice enabled.");
+      };
+      unlock.onerror = () => {
+        setVoiceReady(false);
+        setTalkStatus("Could not enable voice output.");
+      };
+      window.speechSynthesis.speak(unlock);
+    } catch {
+      setVoiceReady(false);
+      setTalkStatus("Could not enable voice output.");
+    }
+  }
+
   function startVoiceInput() {
     if (typeof window === "undefined") return;
+    if (loadingRef.current || listeningRef.current) return;
 
     const speechWindow = window as unknown as {
       SpeechRecognition?: SpeechRecCtor;
@@ -188,34 +261,46 @@ export default function StylistPage() {
 
     const rec = new Ctor();
     recognizerRef.current = rec;
-    rec.lang = "en-US";
+    rec.lang = preferredLanguage === "Hindi" ? "hi-IN" : preferredLanguage === "English" ? "en-US" : "en-IN";
     rec.interimResults = false;
     setListening(true);
+    setTalkStatus("Listening...");
 
     rec.onresult = (event: unknown) => {
       const ev = event as { results?: ArrayLike<ArrayLike<{ transcript: string }>> };
       const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
-      if (text) setInput((prev) => (prev ? `${prev} ${text}` : text));
       setListening(false);
       rec.stop();
+      if (text) {
+        setInput(text);
+        setTalkStatus(`Heard: ${text}`);
+        void sendMessage(text);
+      } else if (modeRef.current === "talk" && handsFreeRef.current) {
+        setTalkStatus("Could not hear clearly. Listening again...");
+        setTimeout(() => startVoiceInput(), 300);
+      }
     };
 
     rec.onerror = () => {
       setListening(false);
       rec.stop();
+      setTalkStatus("Mic error. Trying again...");
+      if (modeRef.current === "talk" && handsFreeRef.current) {
+        setTimeout(() => startVoiceInput(), 900);
+      }
     };
 
     rec.start();
   }
 
-  async function send(e: FormEvent) {
-    e.preventDefault();
-    if ((!input.trim() && !pendingImages.length) || loading) return;
+  async function sendMessage(overrideText?: string) {
+    const messageText = (overrideText ?? input).trim();
+    if ((!messageText && !pendingImages.length) || loading) return;
 
     const images = pendingImages;
     const userMessage: StylistMessage = {
       role: "user",
-      content: input.trim() || "Please review these images honestly.",
+      content: messageText || "Please review these images honestly.",
       images
     };
 
@@ -223,6 +308,7 @@ export default function StylistPage() {
     persist(next);
     setInput("");
     setLoading(true);
+    setTalkStatus("Thinking...");
 
     try {
       const res = await fetch("/api/stylist", {
@@ -245,6 +331,10 @@ export default function StylistPage() {
         recommendation?: StylistRecommendation;
       };
 
+      if (!res.ok) {
+        throw new Error(data.error || "Stylist service failed.");
+      }
+
       const assistant: StylistMessage = {
         role: "assistant",
         content: data.reply ?? data.error ?? "Stylist is temporarily unavailable.",
@@ -255,9 +345,26 @@ export default function StylistPage() {
       persist(withReply);
       setPendingImages([]);
       speak(assistant.content);
+      setTalkStatus(modeRef.current === "talk" ? "Reply ready." : "");
+      return assistant.content;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Stylist is temporarily unavailable.";
+      const failMessage: StylistMessage = {
+        role: "assistant",
+        content: message
+      };
+      persist([...next, failMessage]);
+      speak(failMessage.content);
+      setTalkStatus(`Error: ${message}`);
+      return failMessage.content;
     } finally {
       setLoading(false);
     }
+  }
+
+  async function send(e: FormEvent) {
+    e.preventDefault();
+    await sendMessage();
   }
 
   useEffect(() => {
@@ -312,7 +419,28 @@ export default function StylistPage() {
               {listening ? "Listening..." : "Speak"}
             </button>
           ) : null}
+          {mode === "talk" ? (
+            <button type="button" className="secondary" onClick={enableVoice}>
+              Enable Voice
+            </button>
+          ) : null}
+          {mode === "talk" ? (
+            <button type="button" className="secondary" onClick={() => speak("Hi, I am your stylist. I am ready.")}>
+              Test Voice
+            </button>
+          ) : null}
+          {mode === "talk" ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setHandsFreeTalk((v) => !v)}
+            >
+              {handsFreeTalk ? "Hands-free On" : "Hands-free Off"}
+            </button>
+          ) : null}
         </div>
+        {mode === "talk" ? <p className="small">Talk mode is Alexa-style: speak, auto-send, hear reply, then listen again.</p> : null}
+        {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
 
         <div
           ref={chatListRef}
