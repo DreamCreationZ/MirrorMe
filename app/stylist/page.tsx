@@ -69,6 +69,8 @@ export default function StylistPage() {
   const handsFreeRef = useRef(handsFreeTalk);
   const loadingRef = useRef(loading);
   const listeningRef = useRef(listening);
+  const speakingRef = useRef(false);
+  const recognizerRunningRef = useRef(false);
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -160,13 +162,39 @@ export default function StylistPage() {
       return;
     }
 
+    if (recognizerRef.current) {
+      recognizerRef.current.stop();
+      recognizerRef.current = null;
+      recognizerRunningRef.current = false;
+      setListening(false);
+    }
+
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text.replace(/\n+/g, " "));
+    const voices = window.speechSynthesis.getVoices();
+    const langHint = preferredLanguage === "Hindi" ? "hi" : "en";
+    const stylistLower = stylistName.toLowerCase();
+    const profileLower = (profile?.name || "").toLowerCase();
+    const wantsFemale =
+      /(meera|sera|sara|riya|priya|anita|swati)/i.test(stylistLower) ||
+      /(swati|priya|riya|anita)/i.test(profileLower);
+    const femaleHint = /(female|woman|zira|samantha|karen|moira|tessa|veena)/i;
+    const pickedVoice =
+      voices.find((v) => v.lang.toLowerCase().startsWith(langHint) && (!wantsFemale || femaleHint.test(v.name.toLowerCase()))) ||
+      voices.find((v) => !wantsFemale || femaleHint.test(v.name.toLowerCase()));
+    if (pickedVoice) {
+      utterance.voice = pickedVoice;
+      utterance.lang = pickedVoice.lang;
+    }
     utterance.rate = 1;
     utterance.pitch = 1;
-    utterance.onstart = () => setTalkStatus("Speaking...");
+    utterance.onstart = () => {
+      speakingRef.current = true;
+      setTalkStatus("Speaking...");
+    };
     utterance.onerror = () => setTalkStatus("Speech output failed. Click Enable Voice and try again.");
     utterance.onend = () => {
+      speakingRef.current = false;
       if (modeRef.current === "talk" && handsFreeRef.current && !loadingRef.current && !listeningRef.current) {
         startVoiceInput();
       }
@@ -246,7 +274,7 @@ export default function StylistPage() {
 
   function startVoiceInput() {
     if (typeof window === "undefined") return;
-    if (loadingRef.current || listeningRef.current) return;
+    if (loadingRef.current || listeningRef.current || speakingRef.current || recognizerRunningRef.current) return;
 
     const speechWindow = window as unknown as {
       SpeechRecognition?: SpeechRecCtor;
@@ -261,6 +289,7 @@ export default function StylistPage() {
 
     const rec = new Ctor();
     recognizerRef.current = rec;
+    recognizerRunningRef.current = true;
     rec.lang = preferredLanguage === "Hindi" ? "hi-IN" : preferredLanguage === "English" ? "en-US" : "en-IN";
     rec.interimResults = false;
     setListening(true);
@@ -269,6 +298,7 @@ export default function StylistPage() {
     rec.onresult = (event: unknown) => {
       const ev = event as { results?: ArrayLike<ArrayLike<{ transcript: string }>> };
       const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
+      recognizerRunningRef.current = false;
       setListening(false);
       rec.stop();
       if (text) {
@@ -282,6 +312,7 @@ export default function StylistPage() {
     };
 
     rec.onerror = () => {
+      recognizerRunningRef.current = false;
       setListening(false);
       rec.stop();
       setTalkStatus("Mic error. Trying again...");
