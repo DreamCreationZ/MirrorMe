@@ -497,6 +497,59 @@ export default function StylistPage() {
       <article className="card phone-card">
         <h2>{stylistName}</h2>
         <p className="small">Occasion: <strong>{occasion || "casual"}</strong></p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <button type="button" className={mode === "chat" ? "" : "secondary"} onClick={() => setConversationMode("chat")}>
+            Chat
+          </button>
+          <button type="button" className={mode === "talk" ? "" : "secondary"} onClick={() => setConversationMode("talk")}>
+            Talk
+          </button>
+          {mode === "talk" ? (
+            <>
+              <button type="button" className="secondary" onClick={startVoiceInput} disabled={listening}>
+                {listening ? "Listening..." : "Speak"}
+              </button>
+              <button type="button" className="secondary" onClick={() => setHandsFreeTalk((v) => !v)}>
+                {handsFreeTalk ? "Hands-free On" : "Hands-free Off"}
+              </button>
+              <button type="button" className="secondary" onClick={enableVoice}>
+                Enable Voice
+              </button>
+            </>
+          ) : null}
+        </div>
+        <div className="grid cols-2" style={{ marginBottom: 8 }}>
+          <label>
+            Stylist name
+            <input value={renameInput} onChange={(e) => setRenameInput(e.target.value)} placeholder="Meera, Sera..." />
+          </label>
+          <label>
+            Language
+            <select value={preferredLanguage} onChange={(e) => setLanguage(e.target.value)}>
+              <option value="auto">Auto</option>
+              <option value="English">English</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Marathi">Marathi</option>
+              <option value="Tamil">Tamil</option>
+              <option value="Telugu">Telugu</option>
+              <option value="Bengali">Bengali</option>
+              <option value="Gujarati">Gujarati</option>
+            </select>
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <button type="button" className="secondary" onClick={saveStylistName}>Save Name</button>
+          {mode === "talk" && availableVoices.length ? (
+            <select value={selectedVoiceUri} onChange={(e) => setSelectedVoiceUri(e.target.value)}>
+              <option value="">Auto voice</option>
+              {availableVoices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+        {mode === "talk" ? <p className="small">Say &quot;{stylistName}&quot; then your request.</p> : null}
+        {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
 
         <div
           ref={chatListRef}
