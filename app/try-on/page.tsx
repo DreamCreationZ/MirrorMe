@@ -318,20 +318,6 @@ export default function TryOnPage() {
         <p className="small">Both upload and URL inputs are supported. Uploaded files are sent directly for try-on.</p>
       </article>
 
-      <article className="card">
-        <h2>Inputs</h2>
-        <div className="grid cols-2">
-          <div>
-            <p className="small">User photo</p>
-            {personImage ? <img src={personImage} alt="User input" style={{ width: "100%", borderRadius: 12 }} /> : <p className="small">None</p>}
-          </div>
-          <div>
-            <p className="small">Garment photo</p>
-            {garmentImage ? <img src={garmentImage} alt="Garment input" style={{ width: "100%", borderRadius: 12 }} /> : <p className="small">None</p>}
-          </div>
-        </div>
-      </article>
-
       <article className="card" style={{ gridColumn: "1 / -1" }}>
         <h2>Output</h2>
         {!resultUrl ? <p className="small">No output yet.</p> : <img src={resultUrl} alt="Try-on result" style={{ width: "100%", borderRadius: 12 }} />}
