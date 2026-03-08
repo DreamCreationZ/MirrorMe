@@ -159,7 +159,6 @@ export default function StylistPage() {
   }, [handsFreeTalk, mode]);
 
   useEffect(() => {
-    if (mode !== "talk") return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     setVoiceReady(true);
   }, [mode]);
@@ -209,10 +208,9 @@ export default function StylistPage() {
   }
 
   function speak(text: string) {
-    if (mode !== "talk") return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     if (!voiceReady) {
-      setTalkStatus("Voice is not enabled yet. Click Enable Voice once.");
+      setVoiceReady(true);
       return;
     }
 
@@ -242,9 +240,11 @@ export default function StylistPage() {
     utterance.volume = 1;
     utterance.onstart = () => {
       speakingRef.current = true;
-      setTalkStatus("Speaking...");
+      if (mode === "talk") setTalkStatus("Speaking...");
     };
-    utterance.onerror = () => setTalkStatus("Speech output failed. Click Enable Voice and try again.");
+    utterance.onerror = () => {
+      if (mode === "talk") setTalkStatus("Speech output failed. Click Enable Voice and try again.");
+    };
     utterance.onend = () => {
       speakingRef.current = false;
       if (modeRef.current === "talk" && handsFreeRef.current && !loadingRef.current && !listeningRef.current) {

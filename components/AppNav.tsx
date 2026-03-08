@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCurrentUser, logout, onAuthChange } from "@/lib/auth";
-import { loadProfile } from "@/lib/persistence";
+import { loadProfile, saveProfile } from "@/lib/persistence";
 import { UserProfile } from "@/types/models";
 
 const links = [
@@ -15,6 +15,7 @@ const links = [
 
 export function AppNav() {
   const [userName, setUserName] = useState("");
+  const [userId, setUserId] = useState("");
   const [avatarEmoji, setAvatarEmoji] = useState("✨");
   const [avatarImageUrl, setAvatarImageUrl] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -24,6 +25,7 @@ export function AppNav() {
     const sync = async () => {
       const user = getCurrentUser();
       setUserName(user?.name || "");
+      setUserId(user?.id || "");
       if (!user) {
         setAvatarEmoji("✨");
         setAvatarImageUrl("");
@@ -38,6 +40,7 @@ export function AppNav() {
     void sync();
     return onAuthChange(async (user) => {
       setUserName(user?.name || "");
+      setUserId(user?.id || "");
       if (!user) {
         setAvatarEmoji("✨");
         setAvatarImageUrl("");
@@ -50,6 +53,23 @@ export function AppNav() {
       setAvatarImageUrl(loaded?.avatarImageUrl || "");
     });
   }, []);
+
+  async function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read image."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function onUserPhotoChange(file?: File | null) {
+    if (!file || !userId || !profile) return;
+    const image = await fileToDataUrl(file);
+    const next: UserProfile = { ...profile, frontImageUrl: image };
+    setProfile(next);
+    await saveProfile(userId, next);
+  }
 
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", position: "relative" }}>
@@ -79,6 +99,19 @@ export function AppNav() {
       </div>
       {menuOpen && userName ? (
         <div className="menu-panel">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div className="profile-photo-wrap">
+              {profile?.frontImageUrl ? (
+                <img src={profile.frontImageUrl} alt="Profile" className="profile-photo" />
+              ) : (
+                <span className="small">No Photo</span>
+              )}
+            </div>
+            <label className="small" style={{ margin: 0 }}>
+              Change photo
+              <input type="file" accept="image/*" onChange={(e) => void onUserPhotoChange(e.target.files?.[0])} />
+            </label>
+          </div>
           <h3 style={{ margin: 0 }}>My Details</h3>
           <p className="small" style={{ margin: "6px 0 0" }}>Name: {profile?.name || "-"}</p>
           <p className="small" style={{ margin: "2px 0 0" }}>Height: {profile?.heightCm ? `${profile.heightCm} cm` : "-"}</p>
