@@ -27,33 +27,30 @@ export default function HomePage() {
 
   return (
     <section className="card grid phone-single">
-      <h1>Brutal Stylist</h1>
-      <p>
-        Build your closet inventory, tell us who you are, pick an occasion, and chat with an AI stylist that gives
-        honest fashion feedback.
-      </p>
+      <h1>MirrorMe</h1>
+      <p>Welcome to your AI-powered virtual dressing room.</p>
       {loading ? <p className="small">Loading...</p> : null}
       {!loading ? (
         <div className="grid cols-2">
           {!loggedIn ? (
             <Link href="/login">
-              <button>Log In to Start</button>
+              <button>Start (Login / Sign Up)</button>
             </Link>
           ) : hasProfile && hasFrontPhoto ? (
-            <Link href="/occasion">
-              <button>Continue Styling</button>
+            <Link href="/welcome">
+              <button>Enter Virtual Room</button>
             </Link>
           ) : hasProfile ? (
-            <Link href="/welcome">
-              <button>Complete Welcome Setup</button>
+            <Link href="/onboarding">
+              <button>Continue Setup</button>
             </Link>
           ) : (
             <Link href="/onboarding">
-              <button>Start Profile</button>
+              <button>Guided Setup</button>
             </Link>
           )}
           <Link href="/closet">
-            <button className="secondary">Open Closet</button>
+            <button className="secondary">My Closet</button>
           </Link>
         </div>
       ) : null}

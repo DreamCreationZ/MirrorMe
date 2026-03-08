@@ -1,4 +1,4 @@
-import { ClosetItem, SavedLook, SessionFeedback, StylistConfig, StylistMessage, TryOnPreset, UserProfile } from "@/types/models";
+import { AppSettings, ClosetItem, SavedLook, SessionFeedback, StylistConfig, StylistMessage, TryOnPreset, UserProfile } from "@/types/models";
 
 const PROFILE_KEY = "fashion_profile";
 const CLOSET_KEY = "fashion_closet";
@@ -8,6 +8,7 @@ const SAVED_LOOKS_KEY = "fashion_saved_looks";
 const SESSION_FEEDBACK_KEY = "fashion_session_feedback";
 const STYLIST_CONFIG_KEY = "fashion_stylist_config";
 const TRYON_PRESET_KEY = "fashion_tryon_preset";
+const APP_SETTINGS_KEY = "fashion_app_settings";
 
 function safeRead<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -60,5 +61,10 @@ export const localStore = {
   },
   clearTryOnPreset: (userId: string) => {
     localStorage.removeItem(`${TRYON_PRESET_KEY}:${userId}`);
+  },
+  getAppSettings: (userId: string): AppSettings | null =>
+    safeRead<AppSettings | null>(`${APP_SETTINGS_KEY}:${userId}`, null),
+  setAppSettings: (userId: string, settings: AppSettings) => {
+    localStorage.setItem(`${APP_SETTINGS_KEY}:${userId}`, JSON.stringify(settings));
   }
 };

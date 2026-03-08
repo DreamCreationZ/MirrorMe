@@ -4,12 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getCurrentUser, logout, onAuthChange } from "@/lib/auth";
 import { loadProfile } from "@/lib/persistence";
+import { UserProfile } from "@/types/models";
 
 const links = [
   ["Home", "/"],
-  ["Profile", "/onboarding"],
-  ["Welcome", "/welcome"],
-  ["Closet", "/closet"],
   ["Occasion", "/occasion"],
   ["Stylist", "/stylist"],
   ["Try-On", "/try-on"]
@@ -19,6 +17,8 @@ export function AppNav() {
   const [userName, setUserName] = useState("");
   const [avatarEmoji, setAvatarEmoji] = useState("✨");
   const [avatarImageUrl, setAvatarImageUrl] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     const sync = async () => {
@@ -27,11 +27,13 @@ export function AppNav() {
       if (!user) {
         setAvatarEmoji("✨");
         setAvatarImageUrl("");
+        setProfile(null);
         return;
       }
-      const profile = await loadProfile(user.id);
-      setAvatarEmoji(profile?.avatarEmoji || "✨");
-      setAvatarImageUrl(profile?.avatarImageUrl || "");
+      const loaded = await loadProfile(user.id);
+      setProfile(loaded);
+      setAvatarEmoji(loaded?.avatarEmoji || "✨");
+      setAvatarImageUrl(loaded?.avatarImageUrl || "");
     };
     void sync();
     return onAuthChange(async (user) => {
@@ -39,16 +41,18 @@ export function AppNav() {
       if (!user) {
         setAvatarEmoji("✨");
         setAvatarImageUrl("");
+        setProfile(null);
         return;
       }
-      const profile = await loadProfile(user.id);
-      setAvatarEmoji(profile?.avatarEmoji || "✨");
-      setAvatarImageUrl(profile?.avatarImageUrl || "");
+      const loaded = await loadProfile(user.id);
+      setProfile(loaded);
+      setAvatarEmoji(loaded?.avatarEmoji || "✨");
+      setAvatarImageUrl(loaded?.avatarImageUrl || "");
     });
   }, []);
 
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", position: "relative" }}>
       <nav className="nav" aria-label="Main navigation">
         {links.map(([label, href]) => (
           <Link key={href} href={href}>
@@ -67,8 +71,26 @@ export function AppNav() {
           </Link>
         ) : (
           <>
-            <Link href="/login">
-              <button className="secondary">Switch Account</button>
+            <button className="secondary" onClick={() => setMenuOpen((v) => !v)}>
+              Menu
+            </button>
+          </>
+        )}
+      </div>
+      {menuOpen && userName ? (
+        <div className="menu-panel">
+          <h3 style={{ margin: 0 }}>My Details</h3>
+          <p className="small" style={{ margin: "6px 0 0" }}>Name: {profile?.name || "-"}</p>
+          <p className="small" style={{ margin: "2px 0 0" }}>Height: {profile?.heightCm ? `${profile.heightCm} cm` : "-"}</p>
+          <p className="small" style={{ margin: "2px 0 0" }}>Skin tone: {profile?.skinTone || "-"}</p>
+          <p className="small" style={{ margin: "2px 0 0" }}>Country: {profile?.country || "-"}</p>
+          <p className="small" style={{ margin: "2px 0 0" }}>State: {profile?.state || "-"}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            <Link href="/closet?section=add">
+              <button className="secondary" onClick={() => setMenuOpen(false)}>Add Closet</button>
+            </Link>
+            <Link href="/closet?section=view">
+              <button className="secondary" onClick={() => setMenuOpen(false)}>My Closet</button>
             </Link>
             <button
               className="secondary"
@@ -79,9 +101,9 @@ export function AppNav() {
             >
               Sign Out
             </button>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

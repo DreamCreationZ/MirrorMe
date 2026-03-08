@@ -145,8 +145,13 @@ export default function OnboardingPage() {
 
   return (
     <section className="card phone-single">
-      <h1>Personal Style Profile</h1>
-      <p className="small">This profile is used even when users skip closet uploads.</p>
+      <h1>Guided Setup</h1>
+      <p className="small">Step 1: build your persona. Step 2: enter virtual room auth. Step 3: pick occasion and style.</p>
+      <div className="grid cols-3" style={{ marginBottom: 10 }}>
+        <div className="badge">1. Persona</div>
+        <div className="badge">2. Welcome Auth</div>
+        <div className="badge">3. Closet + Stylist</div>
+      </div>
       {existingProfile ? (
         <p className="small text-good">
           Profile already saved for this account. You can edit it below or continue directly.

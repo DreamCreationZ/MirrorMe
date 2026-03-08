@@ -1,21 +1,23 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
-import { loadProfile, saveProfile } from "@/lib/persistence";
-import { StylistConfig, UserProfile } from "@/types/models";
+import { loadCloset, loadProfile, saveProfile } from "@/lib/persistence";
+import { AppSettings, ClosetItem, UserProfile } from "@/types/models";
 
-type ChatLine = { role: "assistant" | "user"; text: string };
-
-function greeting(stylistName: string, userName: string) {
-  const name = userName || "there";
-  return `Hey ${name}, I am ${stylistName}, your personal stylist. You can rename me if you want. Upload your front standing photo and I will style you better.`;
-}
+const defaultSettings: AppSettings = {
+  preferredVendors: [],
+  personaNotes: "",
+  assistantName: "Meera",
+  showOverlayRecommendations: true,
+  authMethod: "passcode",
+  passcode: "1234"
+};
 
 function preferredFemaleVoice(voices: SpeechSynthesisVoice[]) {
-  const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female)/i;
+  const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female|aria|siri)/i;
   return (
     voices.find((v) => /en|hi/i.test(v.lang) && femaleHint.test(v.name)) ||
     voices.find((v) => femaleHint.test(v.name)) ||
@@ -24,22 +26,55 @@ function preferredFemaleVoice(voices: SpeechSynthesisVoice[]) {
   );
 }
 
+function weatherSummary(code?: number, temp?: number) {
+  const conditions: Record<number, string> = {
+    0: "Clear",
+    1: "Mostly clear",
+    2: "Partly cloudy",
+    3: "Cloudy",
+    45: "Foggy",
+    61: "Rainy",
+    63: "Moderate rain",
+    71: "Snowy"
+  };
+  const label = typeof code === "number" ? conditions[code] || "Mixed" : "Mixed";
+  const t = typeof temp === "number" ? `${Math.round(temp)}°C` : "--";
+  return `${label}, ${t}`;
+}
+
 export default function WelcomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [stylistName, setStylistName] = useState("Meera");
-  const [nameInput, setNameInput] = useState("Meera");
+  const [closet, setCloset] = useState<ClosetItem[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [frontImageUrl, setFrontImageUrl] = useState("");
-  const [typing, setTyping] = useState("");
-  const [status, setStatus] = useState("");
-  const [chat, setChat] = useState<ChatLine[]>([]);
   const [speaking, setSpeaking] = useState(false);
+  const [guideChoice, setGuideChoice] = useState<"idle" | "yes" | "skip">("idle");
+  const [passcode, setPasscode] = useState("");
+  const [authOk, setAuthOk] = useState(false);
+  const [status, setStatus] = useState("");
+  const [weather, setWeather] = useState("Loading weather...");
+  const [doorsOpen, setDoorsOpen] = useState(false);
+  const [showAllCloset, setShowAllCloset] = useState(false);
 
-  const helloText = useMemo(
-    () => greeting(stylistName, profile?.name || ""),
-    [profile?.name, stylistName]
-  );
+  const recommendations = useMemo(() => closet.slice(0, 5), [closet]);
+
+  function speak(text: string) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const speech = new SpeechSynthesisUtterance(text);
+    const voice = preferredFemaleVoice(window.speechSynthesis.getVoices());
+    if (voice) {
+      speech.voice = voice;
+      speech.lang = voice.lang;
+    }
+    speech.rate = 0.95;
+    speech.pitch = 1.14;
+    speech.onstart = () => setSpeaking(true);
+    speech.onend = () => setSpeaking(false);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(speech);
+  }
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -48,38 +83,45 @@ export default function WelcomePage() {
         return;
       }
       setUserId(user.id);
-      const loaded = await loadProfile(user.id);
-      if (!loaded) {
+      const loadedProfile = await loadProfile(user.id);
+      if (!loadedProfile) {
         router.replace("/onboarding");
         return;
       }
-      setProfile(loaded);
-      setFrontImageUrl(loaded.frontImageUrl || "");
-
-      const config = localStore.getStylistConfig(user.id);
-      const initialName = config?.name || "Meera";
-      setStylistName(initialName);
-      setNameInput(initialName);
-
-      const text = greeting(initialName, loaded.name);
-      setChat([{ role: "assistant", text }]);
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        const speech = new SpeechSynthesisUtterance(text);
-        const voices = window.speechSynthesis.getVoices();
-        const voice = preferredFemaleVoice(voices);
-        if (voice) {
-          speech.voice = voice;
-          speech.lang = voice.lang;
-        }
-        speech.rate = 0.96;
-        speech.pitch = 1.16;
-        speech.onstart = () => setSpeaking(true);
-        speech.onend = () => setSpeaking(false);
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(speech);
-      }
+      setProfile(loadedProfile);
+      setFrontImageUrl(loadedProfile.frontImageUrl || "");
+      const loadedCloset = await loadCloset(user.id);
+      setCloset(loadedCloset);
+      const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
+      setSettings(loadedSettings);
     });
   }, [router]);
+
+  useEffect(() => {
+    if (!authOk || !profile) return;
+    const greet = `Good morning ${profile.name}. Weather: ${weather}. Here are your recommendations for today.`;
+    speak(greet);
+  }, [authOk, profile, weather]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setWeather("Location disabled");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        const data = (await res.json()) as {
+          current_weather?: { temperature?: number; weathercode?: number };
+        };
+        setWeather(weatherSummary(data.current_weather?.weathercode, data.current_weather?.temperature));
+      } catch {
+        setWeather("Unavailable");
+      }
+    }, () => setWeather("Unavailable"));
+  }, []);
 
   async function fileToDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -97,137 +139,136 @@ export default function WelcomePage() {
     setFrontImageUrl(image);
   }
 
-  async function saveStylistName() {
-    if (!userId) return;
-    const cleaned = nameInput.trim() || "Meera";
-    setStylistName(cleaned);
-    const config: StylistConfig = {
-      name: cleaned,
-      mode: "chat",
-      preferredLanguage: "auto",
-      createdAt: Date.now()
-    };
-    localStore.setStylistConfig(userId, config);
-    setChat((prev) => [...prev, { role: "assistant", text: `Done. My name is now ${cleaned}.` }]);
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      const speech = new SpeechSynthesisUtterance(`Done. My name is now ${cleaned}.`);
-      const voices = window.speechSynthesis.getVoices();
-      const voice = preferredFemaleVoice(voices);
-      if (voice) {
-        speech.voice = voice;
-        speech.lang = voice.lang;
+  async function authenticate() {
+    if (settings.authMethod === "passcode") {
+      if (passcode !== (settings.passcode || "1234")) {
+        setStatus("Invalid passcode.");
+        return;
       }
-      speech.rate = 0.96;
-      speech.pitch = 1.16;
-      speech.onstart = () => setSpeaking(true);
-      speech.onend = () => setSpeaking(false);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(speech);
     }
+    setAuthOk(true);
+    setTimeout(() => setDoorsOpen(true), 280);
   }
 
-  function sendLocalChat(e: FormEvent) {
-    e.preventDefault();
-    const message = typing.trim();
-    if (!message) return;
-    setTyping("");
-    setChat((prev) => [...prev, { role: "user", text: message }]);
-    const reply = `I got you. Save this setup and I will start styling you honestly in chat and try-on.`;
-    setTimeout(() => {
-      setChat((prev) => [...prev, { role: "assistant", text: reply }]);
-    }, 300);
-  }
-
-  async function continueNext() {
+  async function continueToOccasion() {
     if (!userId || !profile) return;
     if (!frontImageUrl.trim()) {
       setStatus("Please upload your front standing photo first.");
       return;
     }
-    const payload: UserProfile = { ...profile, frontImageUrl };
-    await saveProfile(userId, payload);
-    setStatus("Saved. Moving to occasion.");
+    await saveProfile(userId, { ...profile, frontImageUrl });
     router.push("/occasion");
   }
 
-  return (
-    <section className="grid cols-2 phone-grid">
-      <article className="card mirror-hero phone-card">
-        <h1>Virtual Stylist Welcome</h1>
-        <div className="receptionist">
-          <div className={speaking ? "assistant-shell speaking" : "assistant-shell"} aria-hidden>
-            <div className="assistant-aura" />
-            {profile?.avatarImageUrl ? (
-              <img src={profile.avatarImageUrl} alt="Selected avatar" className="assistant-avatar-art" />
-            ) : (
-            <svg viewBox="0 0 220 320" className="assistant-svg" role="img" aria-label="Virtual stylist assistant">
-              <defs>
-                <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#f5d2b4" />
-                  <stop offset="100%" stopColor="#d5a27f" />
-                </linearGradient>
-                <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#3a281d" />
-                  <stop offset="100%" stopColor="#15100d" />
-                </linearGradient>
-                <linearGradient id="dress" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#b85f43" />
-                  <stop offset="100%" stopColor="#7e3024" />
-                </linearGradient>
-              </defs>
-              <ellipse cx="110" cy="302" rx="56" ry="10" fill="rgba(0,0,0,0.2)" />
-              <path d="M60 90 C65 45, 155 45, 160 90 L160 125 L60 125 Z" fill="url(#hair)" />
-              <circle cx="110" cy="92" r="38" fill="url(#skin)" />
-              <circle cx="97" cy="91" r="3.2" fill="#21160f" />
-              <circle cx="124" cy="91" r="3.2" fill="#21160f" />
-              <path d="M99 109 Q110 117, 121 109" stroke="#8f4f46" strokeWidth="3" fill="none" strokeLinecap="round" />
-              <rect x="96" y="124" width="28" height="14" rx="7" fill="url(#skin)" />
-              <path d="M60 154 C76 138, 144 138, 160 154 L176 268 C154 285, 66 285, 44 268 Z" fill="url(#dress)" />
-              <path d="M64 157 C50 178, 44 196, 40 218" stroke="url(#skin)" strokeWidth="13" strokeLinecap="round" />
-              <path d="M156 157 C170 178, 176 196, 180 218" stroke="url(#skin)" strokeWidth="13" strokeLinecap="round" />
-              <path d="M95 286 L86 308 M125 286 L134 308" stroke="#261c16" strokeWidth="10" strokeLinecap="round" />
-            </svg>
-            )}
-            <div className="assistant-wave">
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
-          <div className="mirror-frame">
-            <p>{helloText}</p>
-          </div>
-        </div>
-        <div className="grid">
-          <label>
-            Name your stylist
-            <input value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="Meera, Sera, Ava..." />
-          </label>
-          <button type="button" onClick={saveStylistName}>Save Stylist Name</button>
-          <label>
-            Upload your front standing photo (required)
-            <input type="file" accept="image/*" onChange={onImageChange} />
-          </label>
-          {frontImageUrl ? <img src={frontImageUrl} alt="Front profile" className="front-preview" /> : null}
-          <button type="button" onClick={continueNext}>Save and Continue</button>
-          {status ? <p className="small">{status}</p> : null}
-        </div>
-      </article>
+  function chooseGuide(choice: "yes" | "skip") {
+    setGuideChoice(choice);
+    if (choice === "yes") {
+      speak("I will guide you page by page. Start with occasion, then chat, then virtual try on.");
+      return;
+    }
+    speak("That is fine. Please choose your occasion and I am ready to style you.");
+  }
 
+  return (
+    <section className="grid phone-grid">
       <article className="card phone-card">
-        <h2>Chat with {stylistName}</h2>
-        <div className="welcome-chat">
-          {chat.map((line, idx) => (
-            <p key={idx} className={line.role === "assistant" ? "bubble assistant" : "bubble user"}>
-              {line.text}
-            </p>
-          ))}
-        </div>
-        <form onSubmit={sendLocalChat} className="grid">
-          <input value={typing} onChange={(e) => setTyping(e.target.value)} placeholder={`Message ${stylistName}...`} />
-          <button type="submit">Send</button>
-        </form>
+        <h1>Welcome</h1>
+        {!authOk ? (
+          <div className="grid">
+            <p className="small">Authenticate to enter your virtual room.</p>
+            <label>
+              Auth method
+              <select
+                value={settings.authMethod}
+                onChange={(e) => setSettings((s) => ({ ...s, authMethod: e.target.value as AppSettings["authMethod"] }))}
+              >
+                <option value="passcode">Passcode</option>
+                <option value="fingerprint">Fingerprint</option>
+                <option value="face">Face unlock</option>
+              </select>
+            </label>
+            {settings.authMethod === "passcode" ? (
+              <label>
+                Passcode
+                <input value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Enter passcode" />
+              </label>
+            ) : (
+              <p className="small">Tap authenticate to simulate {settings.authMethod} unlock on web.</p>
+            )}
+            <button type="button" onClick={authenticate}>Authenticate</button>
+          </div>
+        ) : (
+          <div className="grid">
+            <div className={doorsOpen ? "virtual-room doors-open" : "virtual-room"}>
+              <div className="door left" />
+              <div className="door right" />
+              <div className="room-content">
+                <p className="small">Weather: {weather}</p>
+                <p>Good morning {profile?.name || "there"}.</p>
+              </div>
+            </div>
+
+            <div className={speaking ? "assistant-shell speaking folded-hands" : "assistant-shell folded-hands"} aria-hidden>
+              <div className="assistant-aura" />
+              {profile?.avatarImageUrl ? <img src={profile.avatarImageUrl} alt="Assistant avatar" className="assistant-avatar-art" /> : <div className="assistant-placeholder">🙏</div>}
+            </div>
+
+            <div className="grid cols-2">
+              <button type="button" onClick={() => chooseGuide("yes")}>Yes, guide me</button>
+              <button type="button" className="secondary" onClick={() => chooseGuide("skip")}>Skip</button>
+            </div>
+
+            {guideChoice !== "idle" ? (
+              <p className="small">
+                {guideChoice === "yes"
+                  ? "Step 1: pick occasion. Step 2: chat with stylist. Step 3: virtual try-on."
+                  : "Choose your occasion. I am ready to style you."}
+              </p>
+            ) : null}
+
+            <p className="small">Here are your recommendations for today:</p>
+            <div className="grid cols-3">
+              {recommendations.length ? recommendations.map((item) => (
+                <div key={item.id} className="badge" style={{ padding: 8 }}>
+                  {settings.showOverlayRecommendations && frontImageUrl ? (
+                    <img src={frontImageUrl} alt="Overlay preview" style={{ width: "100%", borderRadius: 8 }} />
+                  ) : item.imageUrl ? (
+                    <img src={item.imageUrl} alt={item.name} style={{ width: "100%", borderRadius: 8 }} />
+                  ) : (
+                    <div className="small">No image</div>
+                  )}
+                  <p className="small" style={{ margin: "6px 0 0" }}>{item.name}</p>
+                </div>
+              )) : <p className="small">No closet items yet. Add in closet.</p>}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className="secondary" onClick={() => setShowAllCloset((v) => !v)}>
+                {showAllCloset ? "Dismiss All" : "Show All Closet"}
+              </button>
+              <button type="button" onClick={continueToOccasion}>Choose Occasion</button>
+              <button type="button" className="secondary" onClick={() => router.push("/stylist")}>Assistant</button>
+            </div>
+            {showAllCloset ? (
+              <div className="grid cols-3">
+                {closet.map((item) => (
+                  <div key={`all-${item.id}`} className="badge" style={{ padding: 8 }}>
+                    <p className="small" style={{ margin: 0 }}>{item.name}</p>
+                    <p className="small" style={{ margin: 0 }}>{item.category}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
+        <label>
+          Upload your front standing photo (required)
+          <input type="file" accept="image/*" onChange={onImageChange} />
+        </label>
+        {frontImageUrl ? <img src={frontImageUrl} alt="Front profile" className="front-preview" /> : null}
+        {status ? <p className="small">{status}</p> : null}
       </article>
     </section>
   );
 }
+

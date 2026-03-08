@@ -75,6 +75,7 @@ a {
   inset: 8px;
   border-radius: 22px;
   pointer-events: none;
+  z-index: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -88,6 +89,13 @@ a {
   height: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.phone-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .phone-single {
@@ -347,6 +355,64 @@ button.secondary {
   border-radius: 999px;
 }
 
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: 58px;
+  width: min(340px, 92vw);
+  z-index: 25;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(18, 23, 33, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.virtual-room {
+  position: relative;
+  border-radius: 16px;
+  min-height: 180px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(228, 191, 131, 0.22), transparent 40%),
+    linear-gradient(180deg, #1e2635, #161d29);
+}
+
+.virtual-room .door {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: linear-gradient(180deg, #2a3347, #1b2231);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  transition: transform 0.7s ease;
+}
+
+.virtual-room .door.left {
+  left: 0;
+}
+
+.virtual-room .door.right {
+  right: 0;
+  border-right: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.virtual-room.doors-open .door.left {
+  transform: translateX(-100%);
+}
+
+.virtual-room.doors-open .door.right {
+  transform: translateX(100%);
+}
+
+.virtual-room .room-content {
+  position: relative;
+  z-index: 2;
+  padding: 16px;
+}
+
 .avatar-picker {
   display: flex;
   gap: 8px;
@@ -511,6 +577,23 @@ button.secondary {
   border: 1px solid rgba(255, 255, 255, 0.18);
   z-index: 2;
   box-shadow: 0 0 22px rgba(228, 191, 131, 0.28);
+}
+
+.assistant-placeholder {
+  width: 132px;
+  height: 132px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 56px;
+  background: linear-gradient(180deg, #2b3243, #1b2333);
+  color: #f8d6a6;
+  z-index: 2;
+}
+
+.folded-hands .assistant-avatar-art,
+.folded-hands .assistant-placeholder {
+  box-shadow: 0 0 22px rgba(248, 214, 166, 0.28);
 }
 
 .assistant-wave {

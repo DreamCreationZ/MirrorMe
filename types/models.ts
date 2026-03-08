@@ -77,3 +77,12 @@ export interface TryOnPreset {
   garmentImages: string[];
   createdAt: number;
 }
+
+export interface AppSettings {
+  preferredVendors: string[];
+  personaNotes: string;
+  assistantName: string;
+  showOverlayRecommendations: boolean;
+  authMethod: "passcode" | "fingerprint" | "face";
+  passcode: string;
+}

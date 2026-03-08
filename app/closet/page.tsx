@@ -3,8 +3,9 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
+import { localStore } from "@/lib/localStore";
 import { addClosetItem, loadCloset, markClosetItemWorn } from "@/lib/persistence";
-import { ClosetItem } from "@/types/models";
+import { AppSettings, ClosetItem } from "@/types/models";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -27,6 +28,16 @@ export default function ClosetPage() {
   const [normalizing, setNormalizing] = useState(false);
   const [normalizeNote, setNormalizeNote] = useState("");
   const [status, setStatus] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>({
+    preferredVendors: [],
+    personaNotes: "",
+    assistantName: "Meera",
+    showOverlayRecommendations: true,
+    authMethod: "passcode",
+    passcode: "1234"
+  });
+  const [vendorsText, setVendorsText] = useState("");
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -37,8 +48,30 @@ export default function ClosetPage() {
       setUserId(user.id);
       const loaded = await loadCloset(user.id);
       setItems(loaded);
+      const loadedSettings = localStore.getAppSettings(user.id);
+      if (loadedSettings) {
+        setSettings(loadedSettings);
+        setVendorsText(loadedSettings.preferredVendors.join(", "));
+      }
     });
   }, [router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const section = new URLSearchParams(window.location.search).get("section");
+    if (section === "view") {
+      setViewMode("wardrobe");
+      setTimeout(() => {
+        document.getElementById("closet-view-block")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+      return;
+    }
+    if (section === "add") {
+      setTimeout(() => {
+        document.getElementById("closet-add-block")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+    }
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -167,7 +200,52 @@ export default function ClosetPage() {
 
   return (
     <section className="grid cols-2 phone-grid">
-      <article className="card phone-card">
+      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <button type="button" className="secondary" onClick={() => setSettingsOpen((v) => !v)}>👤 Account</button>
+        <button type="button" className="secondary" onClick={() => router.push("/stylist")}>🤖 Assistant</button>
+      </div>
+      {settingsOpen ? (
+        <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
+          <h3>Settings</h3>
+          <div className="grid cols-2">
+            <label>
+              Preferred vendors (comma separated)
+              <input value={vendorsText} onChange={(e) => setVendorsText(e.target.value)} />
+            </label>
+            <label>
+              Assistant name
+              <input value={settings.assistantName} onChange={(e) => setSettings((s) => ({ ...s, assistantName: e.target.value }))} />
+            </label>
+            <label>
+              Persona notes
+              <textarea value={settings.personaNotes} rows={3} onChange={(e) => setSettings((s) => ({ ...s, personaNotes: e.target.value }))} />
+            </label>
+            <label>
+              Recommendation mode
+              <select
+                value={settings.showOverlayRecommendations ? "overlay" : "clothes"}
+                onChange={(e) => setSettings((s) => ({ ...s, showOverlayRecommendations: e.target.value === "overlay" }))}
+              >
+                <option value="overlay">Overlay on user</option>
+                <option value="clothes">Only clothes</option>
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!userId) return;
+              const next = { ...settings, preferredVendors: vendorsText.split(",").map((x) => x.trim()).filter(Boolean) };
+              setSettings(next);
+              localStore.setAppSettings(userId, next);
+              setStatus("Settings saved.");
+            }}
+          >
+            Save Settings
+          </button>
+        </article>
+      ) : null}
+      <article className="card phone-card" id="closet-add-block">
         <h2>Add Closet Item</h2>
         <form onSubmit={onSubmit}>
           <label>
@@ -222,7 +300,7 @@ export default function ClosetPage() {
         {status ? <p className="small">{status}</p> : null}
       </article>
 
-      <article className="card phone-card">
+      <article className="card phone-card" id="closet-view-block">
         <h2>Your Closet ({items.length})</h2>
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           <button type="button" className={viewMode === "wardrobe" ? "" : "secondary"} onClick={() => setViewMode("wardrobe")}>
