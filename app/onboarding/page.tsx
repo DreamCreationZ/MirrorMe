@@ -11,23 +11,43 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function avatarSvg({ skin, hair, shirt, eyes }: { skin: string; hair: string; shirt: string; eyes: string }) {
+function avatarSvg({
+  skin,
+  hair,
+  shirt,
+  eyes,
+  beard = false,
+  glasses = false,
+  female = false
+}: {
+  skin: string;
+  hair: string;
+  shirt: string;
+  eyes: string;
+  beard?: boolean;
+  glasses?: boolean;
+  female?: boolean;
+}) {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>
   <rect width='200' height='200' rx='26' fill='#1a1f2b'/>
   <circle cx='100' cy='78' r='42' fill='${skin}'/>
   <path d='M54 78c2-35 90-36 92 0v16H54z' fill='${hair}'/>
+  ${female ? "<path d='M52 88c8 34 28 50 48 52s40-18 48-52' fill='none' stroke='" + hair + "' stroke-width='13'/>" : ""}
   <rect x='54' y='126' width='92' height='56' rx='20' fill='${shirt}'/>
   <circle cx='84' cy='80' r='5' fill='${eyes}'/><circle cx='116' cy='80' r='5' fill='${eyes}'/>
+  ${glasses ? "<circle cx='84' cy='80' r='10' fill='none' stroke='#0e131d' stroke-width='3'/><circle cx='116' cy='80' r='10' fill='none' stroke='#0e131d' stroke-width='3'/><path d='M94 80h12' stroke='#0e131d' stroke-width='3'/>" : ""}
   <path d='M84 102q16 10 32 0' stroke='#9c5e53' stroke-width='4' fill='none' stroke-linecap='round'/>
+  ${beard ? "<path d='M74 104q26 24 52 0v7q-26 18-52 0z' fill='#3a2a1f'/>" : ""}
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 const AVATARS = [
-  { id: "a1", imageUrl: avatarSvg({ skin: "#d3a17e", hair: "#1b2030", shirt: "#8c2f3c", eyes: "#2d4a7f" }) },
-  { id: "a2", imageUrl: avatarSvg({ skin: "#f0c5a3", hair: "#25282e", shirt: "#355f86", eyes: "#4e311f" }) },
-  { id: "a3", imageUrl: avatarSvg({ skin: "#a97552", hair: "#121827", shirt: "#4a7a4a", eyes: "#1c2f55" }) },
-  { id: "a4", imageUrl: avatarSvg({ skin: "#e5b18c", hair: "#3a2a1f", shirt: "#6e517f", eyes: "#26375a" }) }
+  { id: "a1", imageUrl: avatarSvg({ skin: "#f0c5a3", hair: "#25282e", shirt: "#9aa0a6", eyes: "#4e311f" }) },
+  { id: "a2", imageUrl: avatarSvg({ skin: "#b67a52", hair: "#172033", shirt: "#263b5a", eyes: "#2d4a7f" }) },
+  { id: "a3", imageUrl: avatarSvg({ skin: "#d9a684", hair: "#3a2a1f", shirt: "#496e95", eyes: "#1d2333", beard: true }) },
+  { id: "a4", imageUrl: avatarSvg({ skin: "#e2b18e", hair: "#6d4a2d", shirt: "#d2a22e", eyes: "#3a2a1f", beard: true }) },
+  { id: "a5", imageUrl: avatarSvg({ skin: "#f4c9ad", hair: "#1a2438", shirt: "#2f5670", eyes: "#253859", glasses: true, female: true }) }
 ] as const;
 
 export default function OnboardingPage() {
