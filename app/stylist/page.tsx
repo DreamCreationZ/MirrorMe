@@ -519,7 +519,7 @@ export default function StylistPage() {
             </button>
           ) : null}
         </div>
-        {mode === "talk" ? <p className="small">Talk mode is Alexa-style. With wake word on, say "{stylistName}" first.</p> : null}
+        {mode === "talk" ? <p className="small">Talk mode is Alexa-style. With wake word on, say &quot;{stylistName}&quot; first.</p> : null}
         {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
 
         <div
