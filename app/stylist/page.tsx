@@ -41,6 +41,10 @@ type SpeechRec = {
 
 type SpeechRecCtor = new () => SpeechRec;
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export default function StylistPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -62,6 +66,7 @@ export default function StylistPage() {
   const [handsFreeTalk, setHandsFreeTalk] = useState(true);
   const [talkStatus, setTalkStatus] = useState("");
   const [voiceReady, setVoiceReady] = useState(false);
+  const [wakeWordOnly, setWakeWordOnly] = useState(true);
 
   const recognizerRef = useRef<SpeechRec | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
@@ -302,9 +307,44 @@ export default function StylistPage() {
       setListening(false);
       rec.stop();
       if (text) {
-        setInput(text);
-        setTalkStatus(`Heard: ${text}`);
-        void sendMessage(text);
+        const name = stylistName.trim().toLowerCase();
+        const heard = text.trim();
+        const heardLower = heard.toLowerCase();
+
+        // In hands-free mode, only respond when the stylist name is spoken.
+        if (modeRef.current === "talk" && handsFreeRef.current && wakeWordOnly && name) {
+          const startsWithWake =
+            heardLower.startsWith(`${name} `) ||
+            heardLower.startsWith(`hey ${name}`) ||
+            heardLower.startsWith(`hi ${name}`) ||
+            heardLower.startsWith(`ok ${name}`) ||
+            heardLower === name;
+
+          if (!startsWithWake) {
+            setTalkStatus(`Wake word not detected. Say "${stylistName}" to talk.`);
+            setTimeout(() => startVoiceInput(), 250);
+            return;
+          }
+
+          const stripped = heard
+            .replace(new RegExp(`^\\s*(hey|hi|ok)?\\s*${escapeRegex(stylistName)}\\s*`, "i"), "")
+            .trim();
+
+          if (!stripped) {
+            setTalkStatus(`Yes? I am listening.`);
+            speak("Yes? Tell me how I can style you.");
+            return;
+          }
+
+          setInput(stripped);
+          setTalkStatus(`Heard: ${stripped}`);
+          void sendMessage(stripped);
+          return;
+        }
+
+        setInput(heard);
+        setTalkStatus(`Heard: ${heard}`);
+        void sendMessage(heard);
       } else if (modeRef.current === "talk" && handsFreeRef.current) {
         setTalkStatus("Could not hear clearly. Listening again...");
         setTimeout(() => startVoiceInput(), 300);
@@ -469,8 +509,17 @@ export default function StylistPage() {
               {handsFreeTalk ? "Hands-free On" : "Hands-free Off"}
             </button>
           ) : null}
+          {mode === "talk" ? (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setWakeWordOnly((v) => !v)}
+            >
+              {wakeWordOnly ? "Wake Word On" : "Wake Word Off"}
+            </button>
+          ) : null}
         </div>
-        {mode === "talk" ? <p className="small">Talk mode is Alexa-style: speak, auto-send, hear reply, then listen again.</p> : null}
+        {mode === "talk" ? <p className="small">Talk mode is Alexa-style. With wake word on, say "{stylistName}" first.</p> : null}
         {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
 
         <div
