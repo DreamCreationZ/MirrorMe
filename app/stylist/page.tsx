@@ -78,6 +78,8 @@ export default function StylistPage() {
   const [handsFreeTalk, setHandsFreeTalk] = useState(true);
   const [talkStatus, setTalkStatus] = useState("");
   const [voiceReady, setVoiceReady] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceUri, setSelectedVoiceUri] = useState("");
 
   const recognizerRef = useRef<SpeechRec | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
@@ -160,6 +162,28 @@ export default function StylistPage() {
     listeningRef.current = listening;
   }, [listening]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const synth = window.speechSynthesis;
+    const loadVoices = () => {
+      const voices = synth.getVoices();
+      if (voices.length) setAvailableVoices(voices);
+    };
+    loadVoices();
+    synth.addEventListener("voiceschanged", loadVoices);
+    return () => synth.removeEventListener("voiceschanged", loadVoices);
+  }, []);
+
+  useEffect(() => {
+    if (!availableVoices.length || selectedVoiceUri) return;
+    const femalePriority = /(samantha|veena|karen|moira|tessa|zira|google uk english female|female|woman|ava|serena)/i;
+    const enFemale = availableVoices.find((v) => /en/i.test(v.lang) && femalePriority.test(v.name));
+    const hiFemale = availableVoices.find((v) => /hi/i.test(v.lang) && femalePriority.test(v.name));
+    const fallbackFemale = availableVoices.find((v) => femalePriority.test(v.name));
+    const picked = enFemale || hiFemale || fallbackFemale || availableVoices[0];
+    if (picked) setSelectedVoiceUri(picked.voiceURI);
+  }, [availableVoices, selectedVoiceUri]);
+
   function persist(next: StylistMessage[]) {
     setMessages(next);
     if (userId) localStore.setStylistMessages(userId, next);
@@ -187,27 +211,22 @@ export default function StylistPage() {
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(speechText(text));
-    const voices = window.speechSynthesis.getVoices();
+    const voices = availableVoices.length ? availableVoices : window.speechSynthesis.getVoices();
     const langHint = preferredLanguage === "Hindi" ? "hi" : "en";
     const stylistLower = stylistName.toLowerCase();
     const profileLower = (profile?.name || "").toLowerCase();
     const wantsFemale =
       /(meera|sera|sara|riya|priya|anita|swati)/i.test(stylistLower) ||
       /(swati|priya|riya|anita)/i.test(profileLower);
-    const femaleHint = /(female|woman|zira|samantha|karen|moira|tessa|veena|aria|alloy|nova|ava|serena|siri)/i;
-    const naturalHint = /(premium|neural|enhanced|natural|siri|google|microsoft)/i;
-    const preferredVoices = voices
-      .filter((v) => v.lang.toLowerCase().startsWith(langHint))
-      .sort((a, b) => {
-        const aScore =
-          (wantsFemale && femaleHint.test(a.name.toLowerCase()) ? 3 : 0) +
-          (naturalHint.test(a.name.toLowerCase()) ? 2 : 0);
-        const bScore =
-          (wantsFemale && femaleHint.test(b.name.toLowerCase()) ? 3 : 0) +
-          (naturalHint.test(b.name.toLowerCase()) ? 2 : 0);
-        return bScore - aScore;
-      });
-    const pickedVoice = preferredVoices[0] || voices[0];
+    const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female)/i;
+    const selectedVoice = selectedVoiceUri ? voices.find((v) => v.voiceURI === selectedVoiceUri) : null;
+    const femaleLangVoice = voices.find((v) => v.lang.toLowerCase().startsWith(langHint) && femaleHint.test(v.name.toLowerCase()));
+    const femaleAnyVoice = voices.find((v) => femaleHint.test(v.name.toLowerCase()));
+    const langVoice = voices.find((v) => v.lang.toLowerCase().startsWith(langHint));
+    const pickedVoice =
+      selectedVoice ||
+      (wantsFemale ? femaleLangVoice || femaleAnyVoice || langVoice : langVoice) ||
+      voices[0];
     if (pickedVoice) {
       utterance.voice = pickedVoice;
       utterance.lang = pickedVoice.lang;
@@ -280,19 +299,8 @@ export default function StylistPage() {
     }
     try {
       window.speechSynthesis.cancel();
-      const unlock = new SpeechSynthesisUtterance("Voice enabled.");
-      unlock.volume = 1;
-      unlock.rate = 1;
-      unlock.pitch = 1;
-      unlock.onend = () => {
-        setVoiceReady(true);
-        setTalkStatus("Voice enabled.");
-      };
-      unlock.onerror = () => {
-        setVoiceReady(false);
-        setTalkStatus("Could not enable voice output.");
-      };
-      window.speechSynthesis.speak(unlock);
+      setVoiceReady(true);
+      setTalkStatus("Voice enabled.");
     } catch {
       setVoiceReady(false);
       setTalkStatus("Could not enable voice output.");
@@ -486,6 +494,19 @@ export default function StylistPage() {
               <option value="Arabic">Arabic</option>
             </select>
           </label>
+          {mode === "talk" ? (
+            <label>
+              Voice
+              <select value={selectedVoiceUri} onChange={(e) => setSelectedVoiceUri(e.target.value)}>
+                <option value="">Auto (female preferred)</option>
+                {availableVoices.map((v) => (
+                  <option key={v.voiceURI} value={v.voiceURI}>
+                    {v.name} ({v.lang})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
             <button type="button" className="secondary" onClick={saveStylistName}>Save Name</button>
           </div>
