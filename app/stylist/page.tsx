@@ -57,6 +57,23 @@ function speechText(input: string) {
     .trim();
 }
 
+function extractWakeCommand(text: string, stylistName: string): string | null {
+  const raw = text.trim();
+  const normalized = raw.toLowerCase().replace(/[.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
+  const name = stylistName.trim().toLowerCase();
+  if (!normalized || !name) return null;
+  const parts = normalized.split(" ").filter(Boolean);
+  const startsDirect = parts[0] === name;
+  const startsPrefixed =
+    (parts[0] === "hey" || parts[0] === "hi" || parts[0] === "ok") &&
+    parts[1] === name;
+  if (!startsDirect && !startsPrefixed) return null;
+
+  const originalParts = raw.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const command = startsDirect ? originalParts.slice(1).join(" ") : originalParts.slice(2).join(" ");
+  return command.trim();
+}
+
 export default function StylistPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -227,6 +244,14 @@ export default function StylistPage() {
       selectedVoice ||
       (wantsFemale ? femaleLangVoice || femaleAnyVoice || langVoice : langVoice) ||
       voices[0];
+    if (wantsFemale && !pickedVoice) {
+      setTalkStatus("No female voice found on this device. Add a female system voice and retry.");
+      return;
+    }
+    if (wantsFemale && pickedVoice && !femaleHint.test(pickedVoice.name.toLowerCase())) {
+      setTalkStatus("Female voice not available in browser voices. Please pick/install a female voice.");
+      return;
+    }
     if (pickedVoice) {
       utterance.voice = pickedVoice;
       utterance.lang = pickedVoice.lang;
@@ -339,12 +364,14 @@ export default function StylistPage() {
       if (text) {
         const heard = text.trim();
         const normalized = heard.toLowerCase().replace(/[.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
-        const wake = escapeRegex(stylistName.trim().toLowerCase());
-        const wakeRegex = new RegExp(`^(hey|hi|ok)?\\s*${wake}\\b\\s*(.*)$`, "i");
-        const match = normalized.match(wakeRegex);
+        const name = stylistName.trim().toLowerCase();
+        const parts = normalized.split(" ").filter(Boolean);
+        const hasWake =
+          parts[0] === name ||
+          ((parts[0] === "hey" || parts[0] === "hi" || parts[0] === "ok") && parts[1] === name);
 
         // Strict wake-word mode: ignore everything unless it starts with stylist name.
-        if (!match) {
+        if (!hasWake) {
           setTalkStatus(`Listening for "${stylistName}"...`);
           if (modeRef.current === "talk" && handsFreeRef.current) {
             setTimeout(() => startVoiceInput(), 250);
@@ -352,7 +379,10 @@ export default function StylistPage() {
           return;
         }
 
-        const stripped = (match[2] || "").trim();
+        const stripped =
+          parts[0] === name
+            ? parts.slice(1).join(" ").trim()
+            : parts.slice(2).join(" ").trim();
         if (!stripped) {
           setTalkStatus("Yes? I am listening.");
           speak("Yes? Tell me how I can style you.");
@@ -385,10 +415,20 @@ export default function StylistPage() {
     const messageText = (overrideText ?? input).trim();
     if ((!messageText && !pendingImages.length) || loading) return;
 
+    const command = extractWakeCommand(messageText, stylistName);
+    if (command === null) {
+      setTalkStatus(`No reply. Start with "${stylistName}" first.`);
+      return;
+    }
+    if (!command && !pendingImages.length) {
+      setTalkStatus(`Say "${stylistName}" then your request.`);
+      return;
+    }
+
     const images = pendingImages;
     const userMessage: StylistMessage = {
       role: "user",
-      content: messageText || "Please review these images honestly.",
+      content: command || "Please review these images honestly.",
       images
     };
 
