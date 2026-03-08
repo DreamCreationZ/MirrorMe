@@ -83,6 +83,8 @@ export default function StylistPage() {
   const [messages, setMessages] = useState<StylistMessage[]>([introMessage("Meera")]);
 
   const [input, setInput] = useState("");
+  const [attachmentOpen, setAttachmentOpen] = useState(false);
+  const [pendingPersonImage, setPendingPersonImage] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [handsFreeTalk, setHandsFreeTalk] = useState(true);
@@ -116,7 +118,7 @@ export default function StylistPage() {
       if (config) {
         setStylistName(config.name);
         setRenameInput(config.name);
-        setMode(config.mode);
+        setMode("chat");
         setPreferredLanguage(config.preferredLanguage || "auto");
       } else {
         const firstConfig: StylistConfig = { name: "Meera", mode: "chat", preferredLanguage: "auto", createdAt: Date.now() };
@@ -155,6 +157,12 @@ export default function StylistPage() {
     }
     return undefined;
   }, [handsFreeTalk, mode]);
+
+  useEffect(() => {
+    if (mode !== "talk") return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    setVoiceReady(true);
+  }, [mode]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -261,6 +269,22 @@ export default function StylistPage() {
 
     const images = await Promise.all(files.map((f) => fileToDataUrl(f)));
     setPendingImages((prev) => [...prev, ...images].slice(0, 6));
+  }
+
+  async function onPersonImageAttach(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingPersonImage(await fileToDataUrl(file));
+  }
+
+  function openTryOnFromChat() {
+    if (!userId) return;
+    localStore.setTryOnPreset(userId, {
+      personImage: pendingPersonImage || profile?.frontImageUrl,
+      garmentImages: pendingImages,
+      createdAt: Date.now()
+    });
+    router.push("/try-on");
   }
 
   function saveStylistName() {
@@ -388,7 +412,7 @@ export default function StylistPage() {
     const messageText = (overrideText ?? input).trim();
     if ((!messageText && !pendingImages.length) || loading) return;
 
-    const images = pendingImages;
+    const images = pendingPersonImage ? [pendingPersonImage, ...pendingImages] : pendingImages;
     const userMessage: StylistMessage = {
       role: "user",
       content: messageText || "Please review these images honestly.",
@@ -411,7 +435,7 @@ export default function StylistPage() {
           closet,
           occasion,
           stylistName,
-          conversationMode: mode,
+          conversationMode: "chat",
           preferredLanguage
         })
       });
@@ -435,6 +459,7 @@ export default function StylistPage() {
       const withReply = [...next, assistant];
       persist(withReply);
       setPendingImages([]);
+      setPendingPersonImage("");
       speak(assistant.content);
       setTalkStatus(modeRef.current === "talk" ? "Reply ready." : "");
       return assistant.content;
@@ -470,94 +495,21 @@ export default function StylistPage() {
   return (
     <section className="grid phone-grid">
       <article className="card phone-card">
-        <h2>{stylistName} - AI Stylist</h2>
+        <h2>{stylistName}</h2>
         <p className="small">Occasion: <strong>{occasion || "casual"}</strong></p>
-
-        <div className="grid cols-2" style={{ marginBottom: 10 }}>
-          <label>
-            Stylist name
-            <input value={renameInput} onChange={(e) => setRenameInput(e.target.value)} placeholder="Ex: Meera, Sera" />
-          </label>
-          <label>
-            Language
-            <select value={preferredLanguage} onChange={(e) => setLanguage(e.target.value)}>
-              <option value="auto">Auto (user language)</option>
-              <option value="English">English</option>
-              <option value="Hindi">Hindi</option>
-              <option value="Marathi">Marathi</option>
-              <option value="Tamil">Tamil</option>
-              <option value="Telugu">Telugu</option>
-              <option value="Bengali">Bengali</option>
-              <option value="Gujarati">Gujarati</option>
-              <option value="Kannada">Kannada</option>
-              <option value="Punjabi">Punjabi</option>
-              <option value="Urdu">Urdu</option>
-              <option value="Spanish">Spanish</option>
-              <option value="French">French</option>
-              <option value="Arabic">Arabic</option>
-            </select>
-          </label>
-          {mode === "talk" ? (
-            <label>
-              Voice
-              <select value={selectedVoiceUri} onChange={(e) => setSelectedVoiceUri(e.target.value)}>
-                <option value="">Auto (female preferred)</option>
-                {availableVoices.map((v) => (
-                  <option key={v.voiceURI} value={v.voiceURI}>
-                    {v.name} ({v.lang})
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
-            <button type="button" className="secondary" onClick={saveStylistName}>Save Name</button>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <button type="button" className={mode === "chat" ? "" : "secondary"} onClick={() => setConversationMode("chat")}>Chat with AI Stylist</button>
-          <button type="button" className={mode === "talk" ? "" : "secondary"} onClick={() => setConversationMode("talk")}>Talk with AI Stylist</button>
-          {mode === "talk" ? (
-            <button type="button" className="secondary" onClick={startVoiceInput} disabled={listening}>
-              {listening ? "Listening..." : "Speak"}
-            </button>
-          ) : null}
-          {mode === "talk" ? (
-            <button type="button" className="secondary" onClick={enableVoice}>
-              Enable Voice
-            </button>
-          ) : null}
-          {mode === "talk" ? (
-            <button type="button" className="secondary" onClick={() => speak("Hi, I am your stylist. I am ready.")}>
-              Test Voice
-            </button>
-          ) : null}
-          {mode === "talk" ? (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setHandsFreeTalk((v) => !v)}
-            >
-              {handsFreeTalk ? "Hands-free On" : "Hands-free Off"}
-            </button>
-          ) : null}
-        </div>
-        {mode === "talk" ? <p className="small">Talk mode is Alexa-style. Say &quot;{stylistName}&quot; first, then your message.</p> : null}
-        {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
 
         <div
           ref={chatListRef}
           className="grid"
           style={{
-            maxHeight: "62vh",
-            minHeight: "62vh",
+            maxHeight: "48vh",
+            minHeight: "42vh",
             overflow: "auto",
             marginBottom: 12,
             padding: 10,
             border: "1px solid #ead8c4",
             borderRadius: 12,
-            background: "#fff8ef"
+            background: "rgba(9,13,20,0.7)"
           }}
         >
           {messages.map((m, i) => (
@@ -566,30 +518,13 @@ export default function StylistPage() {
               style={{
                 alignSelf: m.role === "user" ? "end" : "start",
                 maxWidth: "85%",
-                background: m.role === "user" ? "#d76f58" : "#efe3d5",
-                color: m.role === "user" ? "#fff" : "#1d1b19",
+                background: m.role === "user" ? "linear-gradient(135deg,#86603a,#c7a06b)" : "rgba(255,255,255,0.08)",
+                color: m.role === "user" ? "#1b130d" : "#eef2fa",
                 borderRadius: 14,
                 padding: "10px 12px"
               }}
             >
               <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.content}</p>
-
-              {m.recommendation ? (
-                <div style={{ marginTop: 8, background: "#fff8ef", border: "1px solid #ebd7bf", borderRadius: 10, padding: 8 }}>
-                  <p className="small" style={{ margin: 0 }}>
-                    Verdict: <strong>{m.recommendation.verdict}</strong> · Confidence: <strong>{m.recommendation.confidence}%</strong>
-                  </p>
-                  <p className="small" style={{ marginBottom: 6 }}>Why this works for you:</p>
-                  <ul style={{ margin: "0 0 8px 18px", padding: 0 }}>
-                    {m.recommendation.whyThisWorks.map((point, idx) => (<li key={idx} className="small">{point}</li>))}
-                  </ul>
-                  <p className="small" style={{ marginBottom: 6 }}>Alternative option:</p>
-                  <ul style={{ margin: "0 0 8px 18px", padding: 0 }}>
-                    {m.recommendation.alternatives.map((alt, idx) => (<li key={idx} className="small">{alt}</li>))}
-                  </ul>
-                  <p className="small" style={{ margin: 0 }}>Time-saving tip: <strong>{m.recommendation.timeSavingTip}</strong></p>
-                </div>
-              ) : null}
 
               {m.images?.length ? (
                 <div className="grid cols-2" style={{ marginTop: 8 }}>
@@ -605,7 +540,7 @@ export default function StylistPage() {
               style={{
                 alignSelf: "start",
                 maxWidth: "85%",
-                background: "#efe3d5",
+                background: "rgba(255,255,255,0.08)",
                 borderRadius: 14,
                 padding: "10px 12px"
               }}
@@ -617,7 +552,32 @@ export default function StylistPage() {
           ) : null}
         </div>
 
-        <form onSubmit={send} className="grid">
+        <form onSubmit={send} className="grid" style={{ borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button type="button" className="secondary" onClick={() => setAttachmentOpen((v) => !v)} title="Attach">
+              📎
+            </button>
+            <div className="small">
+              {pendingPersonImage ? "User photo attached" : "No user photo"} · Dress images: {pendingImages.length}
+            </div>
+          </div>
+          {attachmentOpen ? (
+            <div className="grid cols-2" style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: 10 }}>
+              <label>
+                Upload dress photo(s)
+                <input type="file" accept="image/*" multiple onChange={onImageAttach} />
+              </label>
+              <label>
+                Upload your photo
+                <input type="file" accept="image/*" onChange={onPersonImageAttach} />
+              </label>
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                <button type="button" className="secondary" onClick={openTryOnFromChat}>
+                  Try-On
+                </button>
+              </div>
+            </div>
+          ) : null}
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -632,20 +592,9 @@ export default function StylistPage() {
               }
             }}
             rows={2}
-            placeholder={mode === "talk" ? `Speak or type to ${stylistName}...` : "Describe your planned outfit, colors, and mood..."}
+            placeholder={`Reply to ${stylistName}... (Press Enter to send)`}
           />
-
-          <label>
-            Upload outfit image(s) (optional)
-            <input type="file" accept="image/*" multiple onChange={onImageAttach} />
-          </label>
-          {pendingImages.length ? <p className="small">Attached images: {pendingImages.length}</p> : null}
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="submit" disabled={loading}>{loading ? "Thinking..." : mode === "talk" ? `Ask ${stylistName}` : "Ask Stylist"}</button>
-            <button type="button" className="secondary" onClick={clearConversation}>Clear Chat</button>
-            <button type="button" className="secondary" onClick={() => router.push("/try-on")}>Open Try-On</button>
-          </div>
+          <div className="small">Press `Enter` to send, `Shift + Enter` for new line.</div>
         </form>
       </article>
     </section>
