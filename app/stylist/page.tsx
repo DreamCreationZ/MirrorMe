@@ -45,6 +45,18 @@ function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function speechText(input: string) {
+  return input
+    .replace(/\n+/g, ". ")
+    .replace(/Verdict:\s*(NOT GOOD|GOOD|BEST)/gi, "")
+    .replace(/Confidence:\s*\d+%?/gi, "")
+    .replace(/Why this works for you:/gi, "Why this works:")
+    .replace(/Alternative option:/gi, "Alternative:")
+    .replace(/Time-saving tip:/gi, "Quick tip:")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export default function StylistPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -66,7 +78,6 @@ export default function StylistPage() {
   const [handsFreeTalk, setHandsFreeTalk] = useState(true);
   const [talkStatus, setTalkStatus] = useState("");
   const [voiceReady, setVoiceReady] = useState(false);
-  const [wakeWordOnly, setWakeWordOnly] = useState(true);
 
   const recognizerRef = useRef<SpeechRec | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
@@ -175,7 +186,7 @@ export default function StylistPage() {
     }
 
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.replace(/\n+/g, " "));
+    const utterance = new SpeechSynthesisUtterance(speechText(text));
     const voices = window.speechSynthesis.getVoices();
     const langHint = preferredLanguage === "Hindi" ? "hi" : "en";
     const stylistLower = stylistName.toLowerCase();
@@ -183,16 +194,27 @@ export default function StylistPage() {
     const wantsFemale =
       /(meera|sera|sara|riya|priya|anita|swati)/i.test(stylistLower) ||
       /(swati|priya|riya|anita)/i.test(profileLower);
-    const femaleHint = /(female|woman|zira|samantha|karen|moira|tessa|veena)/i;
-    const pickedVoice =
-      voices.find((v) => v.lang.toLowerCase().startsWith(langHint) && (!wantsFemale || femaleHint.test(v.name.toLowerCase()))) ||
-      voices.find((v) => !wantsFemale || femaleHint.test(v.name.toLowerCase()));
+    const femaleHint = /(female|woman|zira|samantha|karen|moira|tessa|veena|aria|alloy|nova|ava|serena|siri)/i;
+    const naturalHint = /(premium|neural|enhanced|natural|siri|google|microsoft)/i;
+    const preferredVoices = voices
+      .filter((v) => v.lang.toLowerCase().startsWith(langHint))
+      .sort((a, b) => {
+        const aScore =
+          (wantsFemale && femaleHint.test(a.name.toLowerCase()) ? 3 : 0) +
+          (naturalHint.test(a.name.toLowerCase()) ? 2 : 0);
+        const bScore =
+          (wantsFemale && femaleHint.test(b.name.toLowerCase()) ? 3 : 0) +
+          (naturalHint.test(b.name.toLowerCase()) ? 2 : 0);
+        return bScore - aScore;
+      });
+    const pickedVoice = preferredVoices[0] || voices[0];
     if (pickedVoice) {
       utterance.voice = pickedVoice;
       utterance.lang = pickedVoice.lang;
     }
-    utterance.rate = 1;
-    utterance.pitch = 1;
+    utterance.rate = preferredLanguage === "Hindi" ? 0.92 : 0.94;
+    utterance.pitch = wantsFemale ? 1.06 : 1.0;
+    utterance.volume = 1;
     utterance.onstart = () => {
       speakingRef.current = true;
       setTalkStatus("Speaking...");
@@ -307,44 +329,31 @@ export default function StylistPage() {
       setListening(false);
       rec.stop();
       if (text) {
-        const name = stylistName.trim().toLowerCase();
         const heard = text.trim();
-        const heardLower = heard.toLowerCase();
+        const normalized = heard.toLowerCase().replace(/[.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
+        const wake = escapeRegex(stylistName.trim().toLowerCase());
+        const wakeRegex = new RegExp(`^(hey|hi|ok)?\\s*${wake}\\b\\s*(.*)$`, "i");
+        const match = normalized.match(wakeRegex);
 
-        // In hands-free mode, only respond when the stylist name is spoken.
-        if (modeRef.current === "talk" && handsFreeRef.current && wakeWordOnly && name) {
-          const startsWithWake =
-            heardLower.startsWith(`${name} `) ||
-            heardLower.startsWith(`hey ${name}`) ||
-            heardLower.startsWith(`hi ${name}`) ||
-            heardLower.startsWith(`ok ${name}`) ||
-            heardLower === name;
-
-          if (!startsWithWake) {
-            setTalkStatus(`Wake word not detected. Say "${stylistName}" to talk.`);
+        // Strict wake-word mode: ignore everything unless it starts with stylist name.
+        if (!match) {
+          setTalkStatus(`Listening for "${stylistName}"...`);
+          if (modeRef.current === "talk" && handsFreeRef.current) {
             setTimeout(() => startVoiceInput(), 250);
-            return;
           }
-
-          const stripped = heard
-            .replace(new RegExp(`^\\s*(hey|hi|ok)?\\s*${escapeRegex(stylistName)}\\s*`, "i"), "")
-            .trim();
-
-          if (!stripped) {
-            setTalkStatus(`Yes? I am listening.`);
-            speak("Yes? Tell me how I can style you.");
-            return;
-          }
-
-          setInput(stripped);
-          setTalkStatus(`Heard: ${stripped}`);
-          void sendMessage(stripped);
           return;
         }
 
-        setInput(heard);
-        setTalkStatus(`Heard: ${heard}`);
-        void sendMessage(heard);
+        const stripped = (match[2] || "").trim();
+        if (!stripped) {
+          setTalkStatus("Yes? I am listening.");
+          speak("Yes? Tell me how I can style you.");
+          return;
+        }
+
+        setInput(stripped);
+        setTalkStatus(`Heard: ${stripped}`);
+        void sendMessage(stripped);
       } else if (modeRef.current === "talk" && handsFreeRef.current) {
         setTalkStatus("Could not hear clearly. Listening again...");
         setTimeout(() => startVoiceInput(), 300);
@@ -509,17 +518,8 @@ export default function StylistPage() {
               {handsFreeTalk ? "Hands-free On" : "Hands-free Off"}
             </button>
           ) : null}
-          {mode === "talk" ? (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setWakeWordOnly((v) => !v)}
-            >
-              {wakeWordOnly ? "Wake Word On" : "Wake Word Off"}
-            </button>
-          ) : null}
         </div>
-        {mode === "talk" ? <p className="small">Talk mode is Alexa-style. With wake word on, say &quot;{stylistName}&quot; first.</p> : null}
+        {mode === "talk" ? <p className="small">Talk mode is Alexa-style. Say &quot;{stylistName}&quot; first, then your message.</p> : null}
         {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
 
         <div
