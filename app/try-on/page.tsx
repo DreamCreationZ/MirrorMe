@@ -250,65 +250,68 @@ export default function TryOnPage() {
   }
 
   return (
-    <section className="grid cols-2 phone-grid">
-      <article className="card phone-card">
-        <h1>Virtual Try-On</h1>
-        <p className="small">
-          Upload only garment photo. Your saved onboarding front photo is used automatically.
-        </p>
+    <section className="lux-stage">
+      <div className="lux-phone-grid">
+        <article className="lux-phone">
+          <h4>Virtual Try-On</h4>
+          <form onSubmit={onSubmit} className="grid">
+            <label>
+              Garment type
+              <select value={garmentType} onChange={(e) => setGarmentType(e.target.value as GarmentType)}>
+                <option value="auto">Auto detect</option>
+                <option value="upper_body">Top / Upper body</option>
+                <option value="lower_body">Bottom / Lower body</option>
+                <option value="dresses">Full dress / Saree / Gown</option>
+              </select>
+            </label>
+            <label>
+              Upload garment image
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => onFileChange(e, setGarmentPreview, setGarmentImageUrl)}
+              />
+            </label>
+            <label>
+              Garment URL (optional)
+              <input
+                value={garmentImageUrl}
+                onChange={(e) => {
+                  setGarmentImageUrl(e.target.value);
+                  if (e.target.value) setGarmentPreview("");
+                }}
+              />
+            </label>
+            <label>
+              Extra pieces URL (one per line)
+              <textarea
+                rows={3}
+                value={extraGarmentUrls}
+                onChange={(e) => setExtraGarmentUrls(e.target.value)}
+                placeholder="https://...shirt.jpg&#10;https://...pants.jpg"
+              />
+            </label>
+            <button type="submit" disabled={loading}>{loading ? "Generating..." : "Confirm"}</button>
+          </form>
+          {presetGarments.length ? <p className="small">Preset pieces: {presetGarments.length}</p> : null}
+          {status ? <p className="small">{status}</p> : null}
+        </article>
 
-        <form onSubmit={onSubmit} className="grid">
-          <label>
-            Garment type
-            <select value={garmentType} onChange={(e) => setGarmentType(e.target.value as GarmentType)}>
-              <option value="auto">Auto detect</option>
-              <option value="upper_body">Top / Upper body</option>
-              <option value="lower_body">Bottom / Lower body</option>
-              <option value="dresses">Full dress / Saree / Gown</option>
-            </select>
-          </label>
-          <p className="small">Using your saved front profile photo for overlay.</p>
-          <label>
-            Garment photo upload
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => onFileChange(e, setGarmentPreview, setGarmentImageUrl)}
-            />
-          </label>
-          <label>
-            Garment photo URL (optional alternative)
-            <input
-              value={garmentImageUrl}
-              onChange={(e) => {
-                setGarmentImageUrl(e.target.value);
-                if (e.target.value) {
-                  setGarmentPreview("");
-                }
-              }}
-            />
-          </label>
-          <label>
-            Additional garment URLs (shirt, pants, saree, blouse...) one per line
-            <textarea
-              rows={3}
-              value={extraGarmentUrls}
-              onChange={(e) => setExtraGarmentUrls(e.target.value)}
-              placeholder="https://...shirt.jpg&#10;https://...pants.jpg"
-            />
-          </label>
-          {presetGarments.length ? <p className="small">Preset pieces from stylist page: {presetGarments.length}</p> : null}
-          <button type="submit" disabled={loading}>{loading ? "Working..." : "Generate Try-On"}</button>
-        </form>
-
-        {status ? <p className="small">{status}</p> : null}
-        <p className="small">If onboarding photo is missing, open Profile page and upload front standing photo.</p>
-      </article>
-
-      <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
-        <h2>Output</h2>
-        {!resultUrl ? <p className="small">No output yet.</p> : <img src={resultUrl} alt="Try-on result" style={{ width: "100%", borderRadius: 12 }} />}
-      </article>
+        <article className="lux-phone">
+          <h4>Mirror Preview</h4>
+          <div className="lux-mirror lux-mirror-tall">
+            {!resultUrl ? (
+              <div className="lux-model-silhouette strong" />
+            ) : (
+              <img src={resultUrl} alt="Try-on result" className="lux-mirror-image" />
+            )}
+          </div>
+          <div className="lux-actions">
+            <button className="secondary" type="button">Adjust Fit</button>
+            <button className="secondary" type="button">Save Look</button>
+          </div>
+        </article>
+      </div>
     </section>
   );
 }

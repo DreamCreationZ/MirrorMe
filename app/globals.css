@@ -259,6 +259,168 @@ button.secondary {
   font-weight: 600;
 }
 
+.lux-stage {
+  border-radius: 28px;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 30% 18%, rgba(228, 191, 131, 0.22), transparent 38%),
+    radial-gradient(circle at 74% 22%, rgba(154, 178, 255, 0.14), transparent 36%),
+    linear-gradient(180deg, #181b24, #10131b);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.45);
+}
+
+.lux-phone-grid {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 980px) {
+  .lux-phone-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.lux-phone {
+  border-radius: 20px;
+  padding: 12px;
+  background:
+    linear-gradient(180deg, rgba(34, 39, 52, 0.95), rgba(20, 24, 34, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 22px rgba(228, 191, 131, 0.16);
+}
+
+.lux-phone h4 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.lux-tile-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.lux-tile {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 10px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef2fa;
+  font-size: 12px;
+}
+
+.lux-tile span {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.lux-footer {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.lux-shelf {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 7px;
+  margin-bottom: 8px;
+}
+
+.lux-shelf span {
+  display: block;
+  font-size: 11px;
+  color: #b9c2d8;
+  margin-bottom: 6px;
+}
+
+.lux-chip-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.lux-chip-row i {
+  display: block;
+  height: 24px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #51607d, #2d374d);
+}
+
+.lux-model-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lux-model-card p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #cad3e8;
+}
+
+.lux-model-silhouette {
+  height: 155px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 229, 189, 0.92), rgba(233, 191, 124, 0.2) 44%, transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0, transparent 36%),
+    linear-gradient(180deg, #39425a, #252d40);
+}
+
+.lux-model-silhouette.strong {
+  box-shadow: inset 0 0 20px rgba(228, 191, 131, 0.36);
+}
+
+.lux-mirror {
+  border-radius: 16px;
+  padding: 8px;
+  border: 1px solid rgba(228, 191, 131, 0.45);
+  background: linear-gradient(180deg, #1d2433, #121924);
+  box-shadow: 0 0 16px rgba(228, 191, 131, 0.3);
+}
+
+.lux-actions {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.lux-actions button {
+  font-size: 11px;
+  padding: 8px 6px;
+}
+
+.lux-occasion-phone {
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+.lux-tile-active {
+  border-color: rgba(228, 191, 131, 0.8);
+  box-shadow: 0 0 16px rgba(228, 191, 131, 0.32);
+  background: rgba(228, 191, 131, 0.16);
+}
+
+.lux-mirror-tall {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+}
+
+.lux-mirror-image {
+  width: 100%;
+  border-radius: 12px;
+}
+
 .wardrobe-grid {
   display: grid;
   gap: 14px;
