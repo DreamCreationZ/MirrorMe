@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
+import { enrollBiometric, verifyBiometric } from "@/lib/biometric";
 import { localStore } from "@/lib/localStore";
 import { loadProfile, saveProfile } from "@/lib/persistence";
 import { AppSettings, UserProfile } from "@/types/models";
@@ -18,13 +19,14 @@ const GUEST_PHRASES = [
 const defaultSettings: AppSettings = {
   preferredVendors: [],
   personaNotes: "",
-  assistantName: "Meera",
+  assistantName: "MirrorMe",
   showOverlayRecommendations: true,
   authMethod: "passcode",
-  passcode: "1234"
+  passcode: "",
+  authConfigured: false,
+  authTimeoutMinutes: 45,
+  biometricSetup: false
 };
-
-const WELCOME_AUTH_TTL_MS = 20 * 60 * 1000;
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -34,6 +36,8 @@ export default function WelcomePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [passcode, setPasscode] = useState("");
+  const [setupPasscode, setSetupPasscode] = useState("");
+  const [setupPasscodeConfirm, setSetupPasscodeConfirm] = useState("");
   const [authOk, setAuthOk] = useState(false);
   const [status, setStatus] = useState("");
   const [doorsOpen, setDoorsOpen] = useState(false);
@@ -41,6 +45,7 @@ export default function WelcomePage() {
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [quoteStartIndex, setQuoteStartIndex] = useState(0);
+  const [bioBusy, setBioBusy] = useState(false);
 
   const motivationQuotes = useMemo(
     () => [
@@ -64,6 +69,19 @@ export default function WelcomePage() {
   }, [motivationQuotes, profile?.name, quoteStartIndex]);
 
   const authCacheKey = useMemo(() => (userId ? `fashion_welcome_auth_at:${userId}` : ""), [userId]);
+  const biometricCredentialKey = useMemo(() => (userId ? `fashion_bio_cred:${userId}` : ""), [userId]);
+
+  const effectiveSettings = useMemo(
+    () => ({ ...defaultSettings, ...settings }),
+    [settings]
+  );
+
+  const isConfigured = Boolean(
+    effectiveSettings.authConfigured &&
+      ((effectiveSettings.authMethod === "passcode" && effectiveSettings.passcode) ||
+        ((effectiveSettings.authMethod === "fingerprint" || effectiveSettings.authMethod === "face") &&
+          effectiveSettings.biometricSetup))
+  );
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -81,25 +99,24 @@ export default function WelcomePage() {
       }
       setProfile(loadedProfile);
       const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
-      setSettings(loadedSettings);
+      setSettings({ ...defaultSettings, ...loadedSettings });
       if (typeof window !== "undefined") {
         const quoteKey = `fashion_welcome_quote_seed:${user.id}`;
         const prevSeed = Number(localStorage.getItem(quoteKey) || "0");
-        const nextSeed = Number.isFinite(prevSeed)
-          ? (prevSeed + 1) % motivationQuotes.length
-          : 0;
+        const nextSeed = Number.isFinite(prevSeed) ? (prevSeed + 1) % motivationQuotes.length : 0;
         localStorage.setItem(quoteKey, String(nextSeed));
         setQuoteStartIndex(nextSeed);
       }
       const raw = typeof window !== "undefined" ? localStorage.getItem(`fashion_welcome_auth_at:${user.id}`) : null;
       const lastAuth = raw ? Number(raw) : 0;
-      if (lastAuth && Date.now() - lastAuth < WELCOME_AUTH_TTL_MS) {
+      const ttl = (loadedSettings?.authTimeoutMinutes || 45) * 60 * 1000;
+      if (lastAuth && Date.now() - lastAuth < ttl) {
         setAuthOk(true);
         setDoorsOpen(true);
       }
       setAuthResolved(true);
     });
-  }, [router]);
+  }, [router, motivationQuotes.length]);
 
   useEffect(() => {
     if (!guestMode) return;
@@ -135,11 +152,82 @@ export default function WelcomePage() {
     };
   }, [authOk, roomMessages.length]);
 
-  async function authenticate() {
-    if (settings.authMethod === "passcode" && passcode !== (settings.passcode || "1234")) {
-      setStatus("Invalid passcode.");
+  async function saveAuthSetup() {
+    if (!userId) return;
+    const method = effectiveSettings.authMethod;
+
+    if (method === "passcode") {
+      if (setupPasscode.length < 4) {
+        setStatus("Set a passcode with at least 4 digits.");
+        return;
+      }
+      if (setupPasscode !== setupPasscodeConfirm) {
+        setStatus("Passcode confirmation does not match.");
+        return;
+      }
+      const next: AppSettings = {
+        ...effectiveSettings,
+        passcode: setupPasscode,
+        authConfigured: true,
+        biometricSetup: false
+      };
+      setSettings(next);
+      localStore.setAppSettings(userId, next);
+      setSetupPasscode("");
+      setSetupPasscodeConfirm("");
+      setStatus("Passcode authentication configured.");
       return;
     }
+
+    if (!effectiveSettings.biometricSetup) {
+      setStatus(`Please set up ${method} first.`);
+      return;
+    }
+
+    const next: AppSettings = {
+      ...effectiveSettings,
+      authConfigured: true,
+      passcode: effectiveSettings.passcode || ""
+    };
+    setSettings(next);
+    localStore.setAppSettings(userId, next);
+    setStatus(`${method} authentication configured.`);
+  }
+
+  async function setupBiometric() {
+    if (!userId || !profile) return;
+    setBioBusy(true);
+    const result = await enrollBiometric(biometricCredentialKey, profile.name || "MirrorMe User");
+    setBioBusy(false);
+    if (!result.ok) {
+      setStatus(result.error || "Biometric setup failed.");
+      return;
+    }
+    const next: AppSettings = { ...effectiveSettings, biometricSetup: true };
+    setSettings(next);
+    localStore.setAppSettings(userId, next);
+    setStatus("Biometric setup successful.");
+  }
+
+  async function authenticate() {
+    if (!isConfigured) {
+      setStatus("Please complete authentication setup first.");
+      return;
+    }
+
+    if (effectiveSettings.authMethod === "passcode") {
+      if (passcode !== effectiveSettings.passcode) {
+        setStatus("Invalid passcode.");
+        return;
+      }
+    } else {
+      const result = await verifyBiometric(biometricCredentialKey);
+      if (!result.ok) {
+        setStatus(result.error || "Biometric verification failed.");
+        return;
+      }
+    }
+
     setStatus("");
     setAuthOk(true);
     if (authCacheKey && typeof window !== "undefined") {
@@ -188,28 +276,82 @@ export default function WelcomePage() {
       {!guestMode && authResolved ? (
         <article className="card phone-card">
           <h1>Welcome</h1>
-          {!authOk ? (
+
+          {!isConfigured ? (
             <div className="grid">
-              <p className="small">Authenticate to enter your personal dressing room.</p>
+              <p className="small">Set up your authentication first.</p>
               <label>
                 Auth method
                 <select
-                  value={settings.authMethod}
-                  onChange={(e) => setSettings((s) => ({ ...s, authMethod: e.target.value as AppSettings["authMethod"] }))}
+                  value={effectiveSettings.authMethod}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      authMethod: e.target.value as AppSettings["authMethod"],
+                      authConfigured: false
+                    }))
+                  }
                 >
                   <option value="passcode">Passcode</option>
                   <option value="fingerprint">Fingerprint</option>
                   <option value="face">Face unlock</option>
                 </select>
               </label>
-              {settings.authMethod === "passcode" ? (
+
+              <label>
+                Session timeout
+                <select
+                  value={effectiveSettings.authTimeoutMinutes || 45}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      authTimeoutMinutes: Number(e.target.value) as 30 | 45
+                    }))
+                  }
+                >
+                  <option value={30}>30 minutes</option>
+                  <option value={45}>45 minutes</option>
+                </select>
+              </label>
+
+              {effectiveSettings.authMethod === "passcode" ? (
+                <>
+                  <label>
+                    Create passcode
+                    <input value={setupPasscode} onChange={(e) => setSetupPasscode(e.target.value)} placeholder="Minimum 4 digits" />
+                  </label>
+                  <label>
+                    Confirm passcode
+                    <input value={setupPasscodeConfirm} onChange={(e) => setSetupPasscodeConfirm(e.target.value)} placeholder="Re-enter passcode" />
+                  </label>
+                </>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="secondary" onClick={setupBiometric} disabled={bioBusy}>
+                    {bioBusy ? "Setting up..." : `Set Up ${effectiveSettings.authMethod}`}
+                  </button>
+                  <span className="small">
+                    {effectiveSettings.biometricSetup ? "Biometric is configured." : "Complete biometric setup first."}
+                  </span>
+                </div>
+              )}
+
+              <button type="button" onClick={saveAuthSetup}>Save Authentication Setup</button>
+            </div>
+          ) : !authOk ? (
+            <div className="grid">
+              <p className="small">Authenticate to enter your personal dressing room.</p>
+              <p className="small">Method: <strong>{effectiveSettings.authMethod}</strong></p>
+
+              {effectiveSettings.authMethod === "passcode" ? (
                 <label>
                   Passcode
                   <input value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Enter passcode" />
                 </label>
               ) : (
-                <p className="small">Tap authenticate to simulate {settings.authMethod} unlock on web.</p>
+                <p className="small">Use your device {effectiveSettings.authMethod} authentication when prompted.</p>
               )}
+
               <button type="button" onClick={authenticate}>Authenticate</button>
             </div>
           ) : (
@@ -227,6 +369,7 @@ export default function WelcomePage() {
               </div>
             </div>
           )}
+
           {status ? <p className="small">{status}</p> : null}
         </article>
       ) : null}

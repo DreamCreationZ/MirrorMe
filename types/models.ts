@@ -85,4 +85,7 @@ export interface AppSettings {
   showOverlayRecommendations: boolean;
   authMethod: "passcode" | "fingerprint" | "face";
   passcode: string;
+  authConfigured?: boolean;
+  authTimeoutMinutes?: 30 | 45;
+  biometricSetup?: boolean;
 }

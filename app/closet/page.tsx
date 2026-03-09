@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
+import { verifyBiometric } from "@/lib/biometric";
 import { localStore } from "@/lib/localStore";
 import { addClosetItem, loadCloset, markClosetItemWorn } from "@/lib/persistence";
 import { AppSettings, ClosetItem } from "@/types/models";
@@ -11,7 +12,6 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-const CLOSET_UNLOCK_TTL_MS = 15 * 60 * 1000;
 const ASSISTANT_IDLE_MS = 60 * 1000;
 
 const CATEGORY_ORDER: ClosetItem["category"][] = [
@@ -57,7 +57,10 @@ export default function ClosetPage() {
     assistantName: "MirrorMe",
     showOverlayRecommendations: true,
     authMethod: "passcode",
-    passcode: "1234"
+    passcode: "",
+    authConfigured: false,
+    authTimeoutMinutes: 45,
+    biometricSetup: false
   });
   const [vendorsText, setVendorsText] = useState("");
 
@@ -149,7 +152,8 @@ export default function ClosetPage() {
 
       const authKey = `fashion_closet_unlock_at:${user.id}`;
       const lastUnlock = Number(localStorage.getItem(authKey) || "0");
-      if (lastUnlock && Date.now() - lastUnlock < CLOSET_UNLOCK_TTL_MS) {
+      const ttlMs = (loadedSettings?.authTimeoutMinutes || 45) * 60 * 1000;
+      if (lastUnlock && Date.now() - lastUnlock < ttlMs) {
         setWardrobeUnlocked(true);
       }
     });
@@ -183,9 +187,23 @@ export default function ClosetPage() {
 
   async function unlockWardrobe() {
     if (!userId) return;
-    if ((settings.passcode || "1234") !== closetPasscode.trim()) {
-      setStatus("Incorrect passcode. Please try again.");
+    if (!settings.authConfigured) {
+      setStatus("Please set up authentication first on Welcome page.");
+      router.push("/welcome");
       return;
+    }
+
+    if (settings.authMethod === "passcode") {
+      if (!settings.passcode || settings.passcode !== closetPasscode.trim()) {
+        setStatus("Incorrect passcode. Please try again.");
+        return;
+      }
+    } else {
+      const result = await verifyBiometric(`fashion_bio_cred:${userId}`);
+      if (!result.ok) {
+        setStatus(result.error || "Biometric verification failed.");
+        return;
+      }
     }
     setStatus("");
     setDoorOpening(true);
@@ -337,10 +355,14 @@ export default function ClosetPage() {
               <p className="door-message">Your wardrobe is secured. Enter passcode to open.</p>
             </div>
           </div>
-          <label>
-            Wardrobe passcode
-            <input value={closetPasscode} onChange={(e) => setClosetPasscode(e.target.value)} placeholder="Enter passcode" />
-          </label>
+          {settings.authMethod === "passcode" ? (
+            <label>
+              Wardrobe passcode
+              <input value={closetPasscode} onChange={(e) => setClosetPasscode(e.target.value)} placeholder="Enter passcode" />
+            </label>
+          ) : (
+            <p className="small">Method: {settings.authMethod}. Click open to verify with device biometric.</p>
+          )}
           <button type="button" onClick={unlockWardrobe}>Open My Wardrobe</button>
           {status ? <p className="small">{status}</p> : null}
         </article>
