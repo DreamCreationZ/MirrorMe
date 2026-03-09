@@ -18,6 +18,7 @@ type TryOnJob = {
 type GarmentType = "auto" | "upper_body" | "lower_body" | "dresses";
 
 export default function TryOnPage() {
+  const [userId, setUserId] = useState("");
   const [personImageUrl, setPersonImageUrl] = useState("");
   const [garmentImageUrl, setGarmentImageUrl] = useState("");
   const [personPreview, setPersonPreview] = useState("");
@@ -26,6 +27,7 @@ export default function TryOnPage() {
   const [resultUrl, setResultUrl] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tryCredits, setTryCredits] = useState(0);
   const [extraGarmentUrls, setExtraGarmentUrls] = useState("");
   const [presetGarments, setPresetGarments] = useState<string[]>([]);
   const [garmentType, setGarmentType] = useState<GarmentType>("auto");
@@ -36,6 +38,9 @@ export default function TryOnPage() {
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
       if (!user) return;
+      setUserId(user.id);
+      const key = `fashion_tryon_credits:${user.id}`;
+      setTryCredits(Number(localStorage.getItem(key) || "0"));
       const profile = await loadProfile(user.id);
       if (profile?.frontImageUrl) {
         setPersonImageUrl(profile.frontImageUrl);
@@ -205,6 +210,10 @@ export default function TryOnPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (tryCredits < 1) {
+      setStatus("Please pay $1 to unlock one virtual try before generating.");
+      return;
+    }
     if (!personImage || !garmentImage) {
       setStatus("Please upload your outfit piece photo. Your saved profile photo is used automatically.");
       return;
@@ -241,6 +250,11 @@ export default function TryOnPage() {
 
       setResultUrl(currentPerson);
       setStatus("Done. Full outfit overlay generated.");
+      if (userId) {
+        const next = Math.max(tryCredits - 1, 0);
+        setTryCredits(next);
+        localStorage.setItem(`fashion_tryon_credits:${userId}`, String(next));
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Try-on failed during upload or generation.";
       setStatus(message);
@@ -254,6 +268,21 @@ export default function TryOnPage() {
       <div className="lux-phone-grid">
         <article className="lux-phone">
           <h4>Virtual Try-On</h4>
+          <p className="small">Paid try-on: $1 per try · Credits: {tryCredits}</p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              if (!userId) return;
+              const next = tryCredits + 1;
+              setTryCredits(next);
+              localStorage.setItem(`fashion_tryon_credits:${userId}`, String(next));
+              setStatus("Payment test successful. 1 try credit added.");
+            }}
+            style={{ marginBottom: 10 }}
+          >
+            Pay $1 (Test) to Add 1 Try
+          </button>
           <form onSubmit={onSubmit} className="grid">
             <label>
               Garment type
