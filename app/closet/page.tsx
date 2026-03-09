@@ -12,6 +12,10 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function closetKey(item: Pick<ClosetItem, "category" | "name" | "imageUrl">) {
+  return `${item.category}|${(item.name || "").trim().toLowerCase()}|${(item.imageUrl || "").trim()}`;
+}
+
 const ASSISTANT_IDLE_MS = 60 * 1000;
 
 const CATEGORY_ORDER: ClosetItem["category"][] = [
@@ -341,6 +345,12 @@ export default function ClosetPage() {
       tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
       createdAt: Date.now()
     };
+
+    const duplicate = items.find((x) => closetKey(x) === closetKey(payload));
+    if (duplicate) {
+      setStatus("This exact item already exists in your wardrobe.");
+      return;
+    }
 
     await addClosetItem(userId, payload);
     setItems((prev) => [payload, ...prev]);

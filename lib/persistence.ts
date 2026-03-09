@@ -5,6 +5,22 @@ import { db, firebaseReady } from "@/lib/firebase";
 import { localStore } from "@/lib/localStore";
 import { ClosetItem, UserProfile } from "@/types/models";
 
+function closetKey(item: ClosetItem) {
+  return `${item.category}|${(item.name || "").trim().toLowerCase()}|${(item.imageUrl || "").trim()}`;
+}
+
+function dedupeCloset(items: ClosetItem[]) {
+  const seen = new Set<string>();
+  const deduped: ClosetItem[] = [];
+  for (const item of items) {
+    const key = closetKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+  return deduped;
+}
+
 export async function saveProfile(userId: string, profile: UserProfile): Promise<void> {
   localStore.setProfile(userId, profile);
 
@@ -19,6 +35,8 @@ export async function loadProfile(userId: string): Promise<UserProfile | null> {
 
 export async function addClosetItem(userId: string, item: ClosetItem): Promise<void> {
   const current = localStore.getCloset(userId);
+  const duplicate = current.find((x) => closetKey(x) === closetKey(item));
+  if (duplicate) return;
   localStore.setCloset(userId, [item, ...current]);
 
   if (!firebaseReady() || !db) return;
@@ -27,7 +45,8 @@ export async function addClosetItem(userId: string, item: ClosetItem): Promise<v
 }
 
 export async function loadCloset(userId: string): Promise<ClosetItem[]> {
-  const local = localStore.getCloset(userId);
+  const local = dedupeCloset(localStore.getCloset(userId));
+  localStore.setCloset(userId, local);
   if (!firebaseReady() || !db) return local;
 
   try {
@@ -35,7 +54,9 @@ export async function loadCloset(userId: string): Promise<ClosetItem[]> {
     const snap = await getDocs(q);
     if (snap.empty) return local;
 
-    return snap.docs.map((d) => d.data() as ClosetItem);
+    const merged = dedupeCloset(snap.docs.map((d) => d.data() as ClosetItem));
+    localStore.setCloset(userId, merged);
+    return merged;
   } catch {
     return local;
   }

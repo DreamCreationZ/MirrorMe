@@ -10,8 +10,11 @@ import { ClosetItem, StylistConfig, StylistMessage, StylistRecommendation, UserP
 type SpeechRec = {
   lang: string;
   interimResults: boolean;
+  continuous?: boolean;
+  maxAlternatives?: number;
   onresult: ((event: unknown) => void) | null;
   onerror: ((event: unknown) => void) | null;
+  onend?: (() => void) | null;
   start: () => void;
   stop: () => void;
 };
@@ -40,7 +43,7 @@ function directWelcome(userName: string): StylistMessage {
 }
 
 function speechText(input: string) {
-  return input
+  const cleaned = input
     .replace(/\n+/g, ". ")
     .replace(/Verdict:\s*(NOT GOOD|GOOD|BEST)/gi, "")
     .replace(/Confidence:\s*\d+%?/gi, "")
@@ -49,6 +52,7 @@ function speechText(input: string) {
     .replace(/Time-saving tip:/gi, "Quick tip:")
     .replace(/\s{2,}/g, " ")
     .trim();
+  return cleaned || input.trim();
 }
 
 function pickPreferredVoice(voices: SpeechSynthesisVoice[], femalePreferred: boolean): SpeechSynthesisVoice | undefined {
@@ -205,8 +209,10 @@ export default function StylistPage() {
     if (modeRef.current !== "talk") return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
 
+    const speakable = speechText(text);
+    if (!speakable) return;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(speechText(text));
+    const utterance = new SpeechSynthesisUtterance(speakable);
     const voices = window.speechSynthesis.getVoices();
     const wantsFemale = /(meera|sera|sara|riya|priya|anita|swati)/i.test(`${stylistName} ${profile?.name || ""}`);
     const picked = pickPreferredVoice(voices, wantsFemale);
@@ -255,20 +261,37 @@ export default function StylistPage() {
     const rec = new Ctor();
     recognizerRef.current = rec;
     rec.lang = "en-IN";
-    rec.interimResults = false;
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
     setListening(true);
     setTalkStatus("Listening...");
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    let latestText = "";
 
     rec.onresult = (event: unknown) => {
-      const ev = event as { results?: ArrayLike<ArrayLike<{ transcript: string }>> };
-      const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
-      setListening(false);
-      rec.stop();
-      if (text) {
-        setInput(text);
-        void sendMessage(text);
-      } else {
-        setTalkStatus("Could not hear clearly. Tap mic and try again.");
+      const ev = event as {
+        results?: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }>;
+      };
+      if (!ev.results) return;
+      let finalText = "";
+      for (let i = 0; i < ev.results.length; i += 1) {
+        const result = ev.results[i];
+        const chunk = result?.[0]?.transcript?.trim() || "";
+        if (!chunk) continue;
+        if (result.isFinal) {
+          finalText += `${chunk} `;
+        } else {
+          latestText = chunk;
+        }
+      }
+      const merged = `${finalText}${latestText}`.trim();
+      if (merged) {
+        latestText = merged;
+        setInput(merged);
       }
     };
 
@@ -276,6 +299,17 @@ export default function StylistPage() {
       setListening(false);
       rec.stop();
       setTalkStatus("Mic error. Tap mic and try again.");
+    };
+
+    rec.onend = () => {
+      setListening(false);
+      const finalText = latestText.trim();
+      if (finalText) {
+        setInput(finalText);
+        void sendMessage(finalText);
+      } else {
+        setTalkStatus("Could not hear clearly. Tap mic and try again.");
+      }
     };
 
     rec.start();
