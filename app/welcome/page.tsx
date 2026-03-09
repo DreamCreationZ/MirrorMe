@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
@@ -52,8 +52,6 @@ export default function WelcomePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [closet, setCloset] = useState<ClosetItem[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [frontImageUrl, setFrontImageUrl] = useState("");
-  const [speaking, setSpeaking] = useState(false);
   const [guideChoice, setGuideChoice] = useState<"idle" | "yes" | "skip">("idle");
   const [passcode, setPasscode] = useState("");
   const [authOk, setAuthOk] = useState(false);
@@ -70,7 +68,43 @@ export default function WelcomePage() {
     "Please log in and I will take you on a quick tour."
   ];
 
-  const recommendations = useMemo(() => closet.slice(0, 5), [closet]);
+  const recommendations = useMemo(() => {
+    const iconFor: Record<string, string> = {
+      tops: "👕",
+      bottoms: "👖",
+      dresses: "👗",
+      sarees: "🥻",
+      shoes: "👠",
+      accessories: "👜"
+    };
+    const nameFor: Record<string, string> = {
+      tops: "Refined top pick",
+      bottoms: "Balanced bottom pick",
+      dresses: "Elegant dress pick",
+      sarees: "Classic saree pick",
+      shoes: "Comfort + style shoes",
+      accessories: "Finishing accessories"
+    };
+
+    const categories = Array.from(
+      new Set(closet.map((item) => (item.category || "").toLowerCase()).filter(Boolean))
+    );
+
+    if (categories.length === 0) {
+      return [
+        { id: "default-1", title: "Polished Work Set", hint: "Smart and practical", icon: "✨" },
+        { id: "default-2", title: "Effortless Casual", hint: "Clean everyday look", icon: "🌙" },
+        { id: "default-3", title: "Evening Glow", hint: "Dressy, confident vibe", icon: "💫" }
+      ];
+    }
+
+    return categories.slice(0, 5).map((cat, idx) => ({
+      id: `${cat}-${idx}`,
+      title: nameFor[cat] || "Signature look",
+      hint: `From your ${cat} collection`,
+      icon: iconFor[cat] || "✨"
+    }));
+  }, [closet]);
 
   function speak(text: string) {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -82,8 +116,6 @@ export default function WelcomePage() {
     }
     speech.rate = 0.95;
     speech.pitch = 1.14;
-    speech.onstart = () => setSpeaking(true);
-    speech.onend = () => setSpeaking(false);
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(speech);
   }
@@ -103,7 +135,6 @@ export default function WelcomePage() {
         return;
       }
       setProfile(loadedProfile);
-      setFrontImageUrl(loadedProfile.frontImageUrl || "");
       const loadedCloset = await loadCloset(user.id);
       setCloset(loadedCloset);
       const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
@@ -130,7 +161,7 @@ export default function WelcomePage() {
 
   useEffect(() => {
     if (!authOk || !profile) return;
-    const greet = `Good morning ${profile.name}. Weather: ${weather}. Here are your recommendations for today.`;
+    const greet = `Good morning ${profile.name}. Welcome back. Weather update: ${weather}. I picked fresh style ideas for you.`;
     speak(greet);
   }, [authOk, profile, weather]);
 
@@ -154,22 +185,6 @@ export default function WelcomePage() {
     }, () => setWeather("Unavailable"));
   }, []);
 
-  async function fileToDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Failed to read image."));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function onImageChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const image = await fileToDataUrl(file);
-    setFrontImageUrl(image);
-  }
-
   async function authenticate() {
     if (settings.authMethod === "passcode") {
       if (passcode !== (settings.passcode || "1234")) {
@@ -183,11 +198,11 @@ export default function WelcomePage() {
 
   async function continueToOccasion() {
     if (!userId || !profile) return;
-    if (!frontImageUrl.trim()) {
-      setStatus("Please upload your front standing photo first.");
+    if (!(profile.frontImageUrl || "").trim()) {
+      setStatus("Please add your front photo in Menu > Account first.");
       return;
     }
-    await saveProfile(userId, { ...profile, frontImageUrl });
+    await saveProfile(userId, profile);
     router.push("/occasion");
   }
 
@@ -228,103 +243,90 @@ export default function WelcomePage() {
       ) : null}
 
       {!guestMode && authResolved ? (
-      <article className="card phone-card">
-        <h1>Welcome</h1>
-        {!authOk ? (
-          <div className="grid">
-            <p className="small">Authenticate to enter your virtual room.</p>
-            <label>
-              Auth method
-              <select
-                value={settings.authMethod}
-                onChange={(e) => setSettings((s) => ({ ...s, authMethod: e.target.value as AppSettings["authMethod"] }))}
-              >
-                <option value="passcode">Passcode</option>
-                <option value="fingerprint">Fingerprint</option>
-                <option value="face">Face unlock</option>
-              </select>
-            </label>
-            {settings.authMethod === "passcode" ? (
+        <article className="card phone-card">
+          <h1>Welcome</h1>
+          {!authOk ? (
+            <div className="grid">
+              <p className="small">Authenticate to enter your virtual room.</p>
               <label>
-                Passcode
-                <input value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Enter passcode" />
+                Auth method
+                <select
+                  value={settings.authMethod}
+                  onChange={(e) => setSettings((s) => ({ ...s, authMethod: e.target.value as AppSettings["authMethod"] }))}
+                >
+                  <option value="passcode">Passcode</option>
+                  <option value="fingerprint">Fingerprint</option>
+                  <option value="face">Face unlock</option>
+                </select>
               </label>
-            ) : (
-              <p className="small">Tap authenticate to simulate {settings.authMethod} unlock on web.</p>
-            )}
-            <button type="button" onClick={authenticate}>Authenticate</button>
-          </div>
-        ) : (
-          <div className="grid">
-            <div className={doorsOpen ? "virtual-room doors-open" : "virtual-room"}>
-              <div className="door left" />
-              <div className="door right" />
-              <div className="room-content">
-                <p className="small">Weather: {weather}</p>
-                <p>Good morning {profile?.name || "there"}.</p>
-              </div>
+              {settings.authMethod === "passcode" ? (
+                <label>
+                  Passcode
+                  <input value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Enter passcode" />
+                </label>
+              ) : (
+                <p className="small">Tap authenticate to simulate {settings.authMethod} unlock on web.</p>
+              )}
+              <button type="button" onClick={authenticate}>Authenticate</button>
             </div>
-
-            <div className={speaking ? "assistant-shell speaking folded-hands" : "assistant-shell folded-hands"} aria-hidden>
-              <div className="assistant-aura" />
-              {profile?.avatarImageUrl ? <img src={profile.avatarImageUrl} alt="Assistant avatar" className="assistant-avatar-art" /> : <div className="assistant-placeholder">🙏</div>}
-            </div>
-
-            <div className="grid cols-2">
-              <button type="button" onClick={() => chooseGuide("yes")}>Yes, guide me</button>
-              <button type="button" className="secondary" onClick={() => chooseGuide("skip")}>Skip</button>
-            </div>
-
-            {guideChoice !== "idle" ? (
-              <p className="small">
-                {guideChoice === "yes"
-                  ? "Step 1: pick occasion. Step 2: chat with stylist. Step 3: virtual try-on."
-                  : "Choose your occasion. I am ready to style you."}
-              </p>
-            ) : null}
-
-            <p className="small">Here are your recommendations for today:</p>
-            <div className="grid cols-3">
-              {recommendations.length ? recommendations.map((item) => (
-                <div key={item.id} className="badge" style={{ padding: 8 }}>
-                  {settings.showOverlayRecommendations && frontImageUrl ? (
-                    <img src={frontImageUrl} alt="Overlay preview" style={{ width: "100%", borderRadius: 8 }} />
-                  ) : item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} style={{ width: "100%", borderRadius: 8 }} />
-                  ) : (
-                    <div className="small">No image</div>
-                  )}
-                  <p className="small" style={{ margin: "6px 0 0" }}>{item.name}</p>
+          ) : (
+            <div className="grid">
+              <div className={doorsOpen ? "virtual-room doors-open" : "virtual-room"}>
+                <div className="door left" />
+                <div className="door right" />
+                <div className="room-content">
+                  <p className="small">Weather: {weather}</p>
+                  <p>Hey {profile?.name || "there"}, your mirror room is open. Ready when you are.</p>
                 </div>
-              )) : <p className="small">No closet items yet. Add in closet.</p>}
-            </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="secondary" onClick={() => setShowAllCloset((v) => !v)}>
-                {showAllCloset ? "Dismiss All" : "Show All Closet"}
-              </button>
-              <button type="button" onClick={continueToOccasion}>Choose Occasion</button>
-              <button type="button" className="secondary" onClick={() => router.push("/stylist")}>Assistant</button>
-            </div>
-            {showAllCloset ? (
-              <div className="grid cols-3">
-                {closet.map((item) => (
-                  <div key={`all-${item.id}`} className="badge" style={{ padding: 8 }}>
-                    <p className="small" style={{ margin: 0 }}>{item.name}</p>
-                    <p className="small" style={{ margin: 0 }}>{item.category}</p>
-                  </div>
-                ))}
               </div>
-            ) : null}
-          </div>
-        )}
-        <label>
-          Upload your front standing photo (required)
-          <input type="file" accept="image/*" onChange={onImageChange} />
-        </label>
-        {frontImageUrl ? <img src={frontImageUrl} alt="Front profile" className="front-preview" /> : null}
-        {status ? <p className="small">{status}</p> : null}
-      </article>
+
+              <div className="grid cols-2">
+                <button type="button" onClick={() => chooseGuide("yes")}>Yes, guide me</button>
+                <button type="button" className="secondary" onClick={() => chooseGuide("skip")}>Skip</button>
+              </div>
+
+              {guideChoice !== "idle" ? (
+                <p className="small">
+                  {guideChoice === "yes"
+                    ? "Step 1: pick occasion. Step 2: chat with stylist. Step 3: virtual try-on."
+                    : "Choose your occasion. I am ready to style you."}
+                </p>
+              ) : null}
+
+              <p className="small">Here are your recommendations for today:</p>
+              <div className="grid cols-3">
+                {recommendations.length ? recommendations.map((item) => (
+                  <div key={item.id} className="badge" style={{ padding: 8 }}>
+                    <div className={settings.showOverlayRecommendations ? "recommend-card overlay-look" : "recommend-card no-image"}>
+                      <span style={{ fontSize: 24 }}>{item.icon}</span>
+                    </div>
+                    <p className="small" style={{ margin: "6px 0 0", fontWeight: 700 }}>{item.title}</p>
+                    <p className="small" style={{ margin: "2px 0 0" }}>{item.hint}</p>
+                  </div>
+                )) : <p className="small">No closet items yet. Add in closet.</p>}
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" className="secondary" onClick={() => setShowAllCloset((v) => !v)}>
+                  {showAllCloset ? "Dismiss All" : "Show All Closet"}
+                </button>
+                <button type="button" onClick={continueToOccasion}>Choose Occasion</button>
+                <button type="button" className="secondary" onClick={() => router.push("/stylist")}>Assistant</button>
+              </div>
+              {showAllCloset ? (
+                <div className="grid cols-3">
+                  {closet.map((item) => (
+                    <div key={`all-${item.id}`} className="badge" style={{ padding: 8 }}>
+                      <p className="small" style={{ margin: 0 }}>{item.name}</p>
+                      <p className="small" style={{ margin: 0 }}>{item.category}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
+          {status ? <p className="small">{status}</p> : null}
+        </article>
       ) : null}
     </section>
   );

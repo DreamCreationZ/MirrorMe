@@ -84,7 +84,6 @@ export default function LoginPage() {
           age: 24,
           heightCm: Number(heightCm) || 165,
           skinTone: skinTone.trim(),
-          avatarEmoji: "👩",
           frontImageUrl: "",
           country: country.trim(),
           state: stateName.trim(),

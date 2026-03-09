@@ -16,8 +16,6 @@ const links = [
 export function AppNav() {
   const [userName, setUserName] = useState("");
   const [userId, setUserId] = useState("");
-  const [avatarEmoji, setAvatarEmoji] = useState("✨");
-  const [avatarImageUrl, setAvatarImageUrl] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
@@ -27,30 +25,22 @@ export function AppNav() {
       setUserName(user?.name || "");
       setUserId(user?.id || "");
       if (!user) {
-        setAvatarEmoji("✨");
-        setAvatarImageUrl("");
         setProfile(null);
         return;
       }
       const loaded = await loadProfile(user.id);
       setProfile(loaded);
-      setAvatarEmoji(loaded?.avatarEmoji || "✨");
-      setAvatarImageUrl(loaded?.avatarImageUrl || "");
     };
     void sync();
     return onAuthChange(async (user) => {
       setUserName(user?.name || "");
       setUserId(user?.id || "");
       if (!user) {
-        setAvatarEmoji("✨");
-        setAvatarImageUrl("");
         setProfile(null);
         return;
       }
       const loaded = await loadProfile(user.id);
       setProfile(loaded);
-      setAvatarEmoji(loaded?.avatarEmoji || "✨");
-      setAvatarImageUrl(loaded?.avatarImageUrl || "");
     });
   }, []);
 
@@ -81,8 +71,12 @@ export function AppNav() {
         ))}
       </nav>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="avatar-nav" aria-label="Selected avatar">
-          {avatarImageUrl ? <img src={avatarImageUrl} alt="Avatar" className="avatar-nav-img" /> : avatarEmoji}
+        <span className="avatar-nav" aria-label="Profile photo">
+          {profile?.frontImageUrl ? (
+            <img src={profile.frontImageUrl} alt="Profile" className="avatar-nav-img" />
+          ) : (
+            <span>{(userName || "U").slice(0, 1).toUpperCase()}</span>
+          )}
         </span>
         {userName ? <span className="small">Signed in as {userName}</span> : null}
         {!userName ? (
