@@ -25,6 +25,20 @@ function introMessage(name: string): StylistMessage {
   };
 }
 
+function occasionGreeting(userName: string, occ: string): StylistMessage {
+  return {
+    role: "assistant",
+    content: `Hey ${userName}, welcome back. I see you are planning for ${occ}. Tell me what you have in mind and I will style you honestly.`
+  };
+}
+
+function directWelcome(userName: string): StylistMessage {
+  return {
+    role: "assistant",
+    content: `Hey ${userName}, welcome back. How may I style you today?`
+  };
+}
+
 function speechText(input: string) {
   return input
     .replace(/\n+/g, ". ")
@@ -115,7 +129,11 @@ export default function StylistPage() {
 
       const saved = localStore.getStylistMessages(user.id);
       const seenKey = `fashion_stylist_seen:${user.id}`;
+      const directWelcomeKey = `fashion_stylist_direct_welcome:${user.id}`;
       const seenBefore = typeof window !== "undefined" ? localStorage.getItem(seenKey) === "1" : false;
+      const directWelcomeShown = typeof window !== "undefined" ? sessionStorage.getItem(directWelcomeKey) === "1" : false;
+      const handoffOccasion = localStore.getStylistOccasionHandoff(user.id);
+      const userName = loadedProfile?.name || user.name || "there";
 
       if (!saved.length && !seenBefore) {
         const initial = [introMessage(config?.name || "MirrorMe")];
@@ -126,8 +144,17 @@ export default function StylistPage() {
       }
 
       const base = saved.length ? saved : [introMessage(config?.name || "MirrorMe")];
-      // Do not inject welcome-back inside an active conversation thread.
-      const next = base;
+      let next = base;
+
+      // Occasion-selected flow: always greet once with chosen occasion and then clear handoff.
+      if (handoffOccasion) {
+        next = [...base, occasionGreeting(userName, handoffOccasion)];
+        localStore.clearStylistOccasionHandoff(user.id);
+      } else if (!directWelcomeShown) {
+        // Direct open of stylist page: one welcome-back per tab session.
+        next = [...base, directWelcome(userName)];
+        if (typeof window !== "undefined") sessionStorage.setItem(directWelcomeKey, "1");
+      }
 
       setMessages(next);
       localStore.setStylistMessages(user.id, next);

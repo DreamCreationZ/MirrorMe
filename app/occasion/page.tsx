@@ -42,6 +42,7 @@ export default function OccasionPage() {
   function continueToStylist() {
     if (!userId) return;
     localStore.setOccasion(userId, occasion);
+    localStore.setStylistOccasionHandoff(userId, occasion);
     router.push("/stylist");
   }
 

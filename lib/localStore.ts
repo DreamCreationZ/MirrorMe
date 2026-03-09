@@ -9,6 +9,7 @@ const SESSION_FEEDBACK_KEY = "fashion_session_feedback";
 const STYLIST_CONFIG_KEY = "fashion_stylist_config";
 const TRYON_PRESET_KEY = "fashion_tryon_preset";
 const APP_SETTINGS_KEY = "fashion_app_settings";
+const STYLIST_OCCASION_HANDOFF_KEY = "fashion_stylist_occasion_handoff";
 
 function safeRead<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -33,6 +34,13 @@ export const localStore = {
   getOccasion: (userId: string): string => safeRead<string>(`${OCCASION_KEY}:${userId}`, "casual"),
   setOccasion: (userId: string, occasion: string) => {
     localStorage.setItem(`${OCCASION_KEY}:${userId}`, JSON.stringify(occasion));
+  },
+  getStylistOccasionHandoff: (userId: string): string => safeRead<string>(`${STYLIST_OCCASION_HANDOFF_KEY}:${userId}`, ""),
+  setStylistOccasionHandoff: (userId: string, occasion: string) => {
+    localStorage.setItem(`${STYLIST_OCCASION_HANDOFF_KEY}:${userId}`, JSON.stringify(occasion));
+  },
+  clearStylistOccasionHandoff: (userId: string) => {
+    localStorage.removeItem(`${STYLIST_OCCASION_HANDOFF_KEY}:${userId}`);
   },
   getStylistMessages: (userId: string): StylistMessage[] =>
     safeRead<StylistMessage[]>(`${STYLIST_MESSAGES_KEY}:${userId}`, []),
