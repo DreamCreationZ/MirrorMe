@@ -24,6 +24,8 @@ const defaultSettings: AppSettings = {
   passcode: "1234"
 };
 
+const WELCOME_AUTH_TTL_MS = 20 * 60 * 1000;
+
 export default function WelcomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -37,16 +39,7 @@ export default function WelcomePage() {
   const [doorsOpen, setDoorsOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [phraseIndex, setPhraseIndex] = useState(0);
-  const [doorMessageIndex, setDoorMessageIndex] = useState(0);
-  const [quoteIndex, setQuoteIndex] = useState(0);
-
-  const doorMessages = useMemo(() => {
-    const name = profile?.name || "there";
-    return [
-      `Hey ${name}, welcome to your personal dressing room.`,
-      "I will be your personal assistant throughout your personal dressing room. Go to the occasion page to select your occasion. Once you select the occasion, the stylist page will open and I will be there with better suggestions for your day. Let's go."
-    ];
-  }, [profile?.name]);
+  const [messageIndex, setMessageIndex] = useState(0);
 
   const motivationQuotes = useMemo(
     () => [
@@ -58,6 +51,17 @@ export default function WelcomePage() {
     ],
     []
   );
+
+  const roomMessages = useMemo(() => {
+    const name = profile?.name || "there";
+    return [
+      `Hey ${name}, welcome to your personal dressing room.`,
+      "I will be your personal assistant throughout your personal dressing room. Go to the occasion page to select your occasion. Once you select the occasion, the stylist page will open and I will be there with better suggestions for your day. Let's go.",
+      ...motivationQuotes.map((q) => `“${q.text}” - ${q.by}`)
+    ];
+  }, [motivationQuotes, profile?.name]);
+
+  const authCacheKey = useMemo(() => (userId ? `fashion_welcome_auth_at:${userId}` : ""), [userId]);
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -76,6 +80,12 @@ export default function WelcomePage() {
       setProfile(loadedProfile);
       const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
       setSettings(loadedSettings);
+      const raw = typeof window !== "undefined" ? localStorage.getItem(`fashion_welcome_auth_at:${user.id}`) : null;
+      const lastAuth = raw ? Number(raw) : 0;
+      if (lastAuth && Date.now() - lastAuth < WELCOME_AUTH_TTL_MS) {
+        setAuthOk(true);
+        setDoorsOpen(true);
+      }
       setAuthResolved(true);
     });
   }, [router]);
@@ -98,18 +108,21 @@ export default function WelcomePage() {
 
   useEffect(() => {
     if (!authOk) return;
-    setDoorMessageIndex(0);
-    const timer = setTimeout(() => setDoorMessageIndex(1), 4300);
-    return () => clearTimeout(timer);
-  }, [authOk]);
-
-  useEffect(() => {
-    if (!authOk) return;
-    const timer = setInterval(() => {
-      setQuoteIndex((v) => (v + 1) % motivationQuotes.length);
-    }, 4200);
-    return () => clearInterval(timer);
-  }, [authOk, motivationQuotes.length]);
+    setMessageIndex(0);
+    const timer1 = setTimeout(() => setMessageIndex(1), 5000);
+    const timer2 = setTimeout(() => setMessageIndex(2), 12000);
+    const quoteInterval = setInterval(() => {
+      setMessageIndex((prev) => {
+        if (prev < 2) return 2;
+        return prev >= roomMessages.length - 1 ? 2 : prev + 1;
+      });
+    }, 60000);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearInterval(quoteInterval);
+    };
+  }, [authOk, roomMessages.length]);
 
   async function authenticate() {
     if (settings.authMethod === "passcode" && passcode !== (settings.passcode || "1234")) {
@@ -118,6 +131,9 @@ export default function WelcomePage() {
     }
     setStatus("");
     setAuthOk(true);
+    if (authCacheKey && typeof window !== "undefined") {
+      localStorage.setItem(authCacheKey, String(Date.now()));
+    }
     setTimeout(() => setDoorsOpen(true), 320);
   }
 
@@ -190,13 +206,8 @@ export default function WelcomePage() {
               <div className={doorsOpen ? "virtual-room single-door doors-open" : "virtual-room single-door"}>
                 <div className="door glass" />
                 <div className="room-content">
-                  <p key={doorMessageIndex} className="door-message">{doorMessages[doorMessageIndex]}</p>
+                  <p key={messageIndex} className="door-message">{roomMessages[messageIndex]}</p>
                 </div>
-              </div>
-
-              <div className="welcome-quote">
-                <p key={quoteIndex} className="welcome-quote-text">“{motivationQuotes[quoteIndex].text}”</p>
-                <p className="welcome-quote-author">- {motivationQuotes[quoteIndex].by}</p>
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
