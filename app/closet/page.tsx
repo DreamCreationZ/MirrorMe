@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
-import { verifyBiometric } from "@/lib/biometric";
+import { enrollBiometric, verifyBiometric } from "@/lib/biometric";
 import { localStore } from "@/lib/localStore";
 import { addClosetItem, loadCloset, markClosetItemWorn } from "@/lib/persistence";
 import { AppSettings, ClosetItem } from "@/types/models";
@@ -65,10 +65,15 @@ export default function ClosetPage() {
   const [vendorsText, setVendorsText] = useState("");
 
   const [closetPasscode, setClosetPasscode] = useState("");
+  const [setupPasscode, setSetupPasscode] = useState("");
+  const [setupPasscodeConfirm, setSetupPasscodeConfirm] = useState("");
+  const [bioBusy, setBioBusy] = useState(false);
   const [wardrobeUnlocked, setWardrobeUnlocked] = useState(false);
   const [doorOpening, setDoorOpening] = useState(false);
   const [assistantPromptOpen, setAssistantPromptOpen] = useState(false);
   const [assistantMessage, setAssistantMessage] = useState("");
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantChat, setAssistantChat] = useState<Array<{ role: "assistant" | "user"; content: string }>>([]);
   const idleTimerRef = useRef<number | null>(null);
 
   const grouped = useMemo(() => {
@@ -130,9 +135,54 @@ export default function ClosetPage() {
     sentence += ". This will look great for your occasion.";
 
     setAssistantMessage(sentence);
+    setAssistantChat((prev) => [...prev, { role: "assistant", content: sentence }]);
     setAssistantPromptOpen(false);
     setStatus(sentence);
     speak(sentence);
+  }
+
+  function suggestFromCloset() {
+    const sortedByNotWorn = [...items].sort((a, b) => (a.lastWornAt || 0) - (b.lastWornAt || 0));
+    const top = sortedByNotWorn.find((x) => x.category === "top");
+    const bottom = sortedByNotWorn.find((x) => x.category === "bottom");
+    const dress = sortedByNotWorn.find((x) => x.category === "dress");
+    const shoes = sortedByNotWorn.find((x) => x.category === "shoes" || x.category === "sandal");
+    if (dress) return `${dress.name}${shoes ? ` with ${shoes.name}` : ""}`;
+    if (top || bottom) return `${top?.name || "a clean top"} with ${bottom?.name || "well-fitted bottoms"}${shoes ? ` and ${shoes.name}` : ""}`;
+    return "";
+  }
+
+  function assistantReply(userText: string) {
+    const text = userText.toLowerCase();
+    const occasion = userId ? localStore.getOccasion(userId) || "casual" : "casual";
+    const look = suggestFromCloset();
+    if (!items.length) {
+      return "Your closet is still empty. Upload a few pieces and I will build a full look for your occasion.";
+    }
+    if (text.includes("choose") || text.includes("pick") || text.includes("suggest") || text.includes("what should")) {
+      return look
+        ? `For your ${occasion} plan, I recommend ${look}. This fits your vibe better than repeating a recently worn look.`
+        : `For your ${occasion} plan, share what you want to wear and I will give you honest advice.`;
+    }
+    if (text.includes("again") || text.includes("repeat") || text.includes("same")) {
+      return "You can repeat if needed, but a fresher option will look better. I can pick a less recently worn piece now.";
+    }
+    if (text.includes("color")) {
+      return "Keep one anchor color and one contrast piece. I can suggest exact items from your closet if you ask me to pick now.";
+    }
+    return "I am here with you in the wardrobe. Ask me to pick a full look, or tell me what you are planning to wear and I will be brutally honest.";
+  }
+
+  function sendAssistantMessage() {
+    const text = assistantInput.trim();
+    if (!text) return;
+    const userMsg = { role: "user" as const, content: text };
+    const reply = assistantReply(text);
+    setAssistantChat((prev) => [...prev, userMsg, { role: "assistant", content: reply }]);
+    setAssistantInput("");
+    setAssistantMessage(reply);
+    speak(reply);
+    touchActivity();
   }
 
   useEffect(() => {
@@ -155,6 +205,14 @@ export default function ClosetPage() {
       const ttlMs = (loadedSettings?.authTimeoutMinutes || 45) * 60 * 1000;
       if (lastUnlock && Date.now() - lastUnlock < ttlMs) {
         setWardrobeUnlocked(true);
+      }
+      if (loadedSettings?.authConfigured) {
+        setAssistantChat([
+          {
+            role: "assistant",
+            content: `Hey, I am ${loadedSettings.assistantName || "MirrorMe"}. I am ready to guide you inside your wardrobe.`
+          }
+        ]);
       }
     });
   }, [router]);
@@ -188,8 +246,7 @@ export default function ClosetPage() {
   async function unlockWardrobe() {
     if (!userId) return;
     if (!settings.authConfigured) {
-      setStatus("Please set up authentication first on Welcome page.");
-      router.push("/welcome");
+      setStatus("Set up authentication below first, then open wardrobe.");
       return;
     }
 
@@ -215,6 +272,55 @@ export default function ClosetPage() {
       speak(`Welcome. I am ${settings.assistantName || "MirrorMe"}. I can help you choose faster.`);
       touchActivity();
     }, 900);
+  }
+
+  async function setupBiometric() {
+    if (!userId) return;
+    setBioBusy(true);
+    const result = await enrollBiometric(`fashion_bio_cred:${userId}`, "MirrorMe Wardrobe");
+    setBioBusy(false);
+    if (!result.ok) {
+      setStatus(result.error || "Biometric setup failed.");
+      return;
+    }
+    const next = { ...settings, biometricSetup: true, authConfigured: true };
+    setSettings(next);
+    localStore.setAppSettings(userId, next);
+    setStatus("Biometric authentication is set.");
+  }
+
+  function saveClosetAuthSetup() {
+    if (!userId) return;
+    if (settings.authMethod === "passcode") {
+      if (setupPasscode.trim().length < 4) {
+        setStatus("Passcode should be at least 4 digits.");
+        return;
+      }
+      if (setupPasscode !== setupPasscodeConfirm) {
+        setStatus("Passcode confirmation does not match.");
+        return;
+      }
+      const next = {
+        ...settings,
+        passcode: setupPasscode.trim(),
+        authConfigured: true,
+        biometricSetup: false
+      };
+      setSettings(next);
+      localStore.setAppSettings(userId, next);
+      setSetupPasscode("");
+      setSetupPasscodeConfirm("");
+      setStatus("Passcode setup complete.");
+      return;
+    }
+    if (!settings.biometricSetup) {
+      setStatus(`Please complete ${settings.authMethod} setup first.`);
+      return;
+    }
+    const next = { ...settings, authConfigured: true };
+    setSettings(next);
+    localStore.setAppSettings(userId, next);
+    setStatus(`${settings.authMethod} setup complete.`);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -355,6 +461,44 @@ export default function ClosetPage() {
               <p className="door-message">Your wardrobe is secured. Enter passcode to open.</p>
             </div>
           </div>
+          {!settings.authConfigured ? (
+            <div className="grid" style={{ marginBottom: 12 }}>
+              <label>
+                Auth method
+                <select
+                  value={settings.authMethod}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      authMethod: e.target.value as AppSettings["authMethod"],
+                      authConfigured: false
+                    }))
+                  }
+                >
+                  <option value="passcode">Passcode</option>
+                  <option value="fingerprint">Fingerprint</option>
+                  <option value="face">Face unlock</option>
+                </select>
+              </label>
+              {settings.authMethod === "passcode" ? (
+                <>
+                  <label>
+                    Create passcode
+                    <input value={setupPasscode} onChange={(e) => setSetupPasscode(e.target.value)} placeholder="Minimum 4 digits" />
+                  </label>
+                  <label>
+                    Confirm passcode
+                    <input value={setupPasscodeConfirm} onChange={(e) => setSetupPasscodeConfirm(e.target.value)} placeholder="Re-enter passcode" />
+                  </label>
+                </>
+              ) : (
+                <button type="button" className="secondary" onClick={setupBiometric} disabled={bioBusy}>
+                  {bioBusy ? "Setting up..." : `Set Up ${settings.authMethod}`}
+                </button>
+              )}
+              <button type="button" onClick={saveClosetAuthSetup}>Save Authentication Setup</button>
+            </div>
+          ) : null}
           {settings.authMethod === "passcode" ? (
             <label>
               Wardrobe passcode
@@ -415,6 +559,43 @@ export default function ClosetPage() {
           <p style={{ margin: 0 }}>{assistantMessage}</p>
         </article>
       ) : null}
+
+      <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
+        <h3>{settings.assistantName || "MirrorMe"} Wardrobe Assistant</h3>
+        <div style={{ display: "grid", gap: 8, maxHeight: 220, overflow: "auto", marginBottom: 10 }}>
+          {assistantChat.map((msg, idx) => (
+            <div
+              key={`${msg.role}-${idx}`}
+              style={{
+                justifySelf: msg.role === "user" ? "end" : "start",
+                maxWidth: "86%",
+                borderRadius: 12,
+                padding: "8px 10px",
+                background: msg.role === "user" ? "linear-gradient(135deg,var(--brand),var(--brand-2))" : "rgba(255,255,255,0.08)",
+                color: msg.role === "user" ? "#1b130d" : "#eef2fa"
+              }}
+            >
+              {msg.content}
+            </div>
+          ))}
+          {!assistantChat.length ? <p className="small">Ask me to pick a look and I will guide you live.</p> : null}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={assistantInput}
+            onChange={(e) => setAssistantInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                sendAssistantMessage();
+              }
+            }}
+            placeholder="Ask your stylist: what should I wear?"
+          />
+          <button type="button" onClick={sendAssistantMessage}>Send</button>
+          <button type="button" className="secondary" onClick={pickAssistantOutfit}>Pick for me</button>
+        </div>
+      </article>
 
       {settingsOpen ? (
         <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
