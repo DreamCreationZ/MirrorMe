@@ -20,8 +20,21 @@ export function AppNav() {
   const [userId, setUserId] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [theme, setTheme] = useState("gold");
+
+  function applyTheme(nextTheme: string) {
+    setTheme(nextTheme);
+    if (typeof window !== "undefined") {
+      document.documentElement.setAttribute("data-theme", nextTheme);
+      localStorage.setItem("fashion_theme", nextTheme);
+    }
+  }
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedTheme = localStorage.getItem("fashion_theme") || "gold";
+      applyTheme(savedTheme);
+    }
     const sync = async () => {
       const user = getCurrentUser();
       setUserName(user?.name || "");
@@ -114,6 +127,15 @@ export function AppNav() {
           <p className="small" style={{ margin: "2px 0 0" }}>Skin tone: {profile?.skinTone || "-"}</p>
           <p className="small" style={{ margin: "2px 0 0" }}>Country: {profile?.country || "-"}</p>
           <p className="small" style={{ margin: "2px 0 0" }}>State: {profile?.state || "-"}</p>
+          <label className="small" style={{ marginTop: 10 }}>
+            Theme
+            <select value={theme} onChange={(e) => applyTheme(e.target.value)}>
+              <option value="gold">Golden Luxe</option>
+              <option value="emerald">Emerald Glow</option>
+              <option value="rose">Rose Velvet</option>
+              <option value="ocean">Ocean Night</option>
+            </select>
+          </label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
             <Link href="/closet?section=add">
               <button className="secondary" onClick={() => setMenuOpen(false)}>Add Closet</button>

@@ -386,7 +386,7 @@ export default function StylistPage() {
                 style={{
                   justifySelf: m.role === "user" ? "end" : "start",
                   maxWidth: "86%",
-                  background: m.role === "user" ? "linear-gradient(135deg,#86603a,#c7a06b)" : "rgba(255,255,255,0.08)",
+                  background: m.role === "user" ? "linear-gradient(135deg,var(--brand),var(--brand-2))" : "rgba(255,255,255,0.08)",
                   color: m.role === "user" ? "#1b130d" : "#eef2fa",
                   borderRadius: 14,
                   padding: "10px 12px"

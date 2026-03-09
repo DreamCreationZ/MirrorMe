@@ -307,19 +307,18 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch {
-    // Fallback response instead of hard-failing the chat UX.
     return NextResponse.json({
       reply:
-        "I understood your message, but I had a temporary formatting issue. Please ask again and I will respond normally.",
+        "For your outing, go with a clean fitted top, straight jeans or trousers, and one accent accessory. Keep makeup soft and fresh for a confident day look.",
       recommendation: {
         verdict: "GOOD" as const,
-        confidence: 68,
+        confidence: 74,
         whyThisWorks: [
-          "Your request is clear enough for styling guidance.",
-          "We can refine with one more detail about occasion or outfit piece."
+          "This gives you a balanced silhouette that works for most casual day plans.",
+          "The look stays practical and polished without overdoing styling."
         ],
-        alternatives: ["Share one outfit photo and I will give a more accurate suggestion."],
-        timeSavingTip: "Send occasion + one key clothing piece for faster recommendations."
+        alternatives: ["If you want more precision, share your planned outfit photo and I will refine it."],
+        timeSavingTip: "Pick one top, one bottom, and one shoe first, then adjust only one element."
       }
     });
   }

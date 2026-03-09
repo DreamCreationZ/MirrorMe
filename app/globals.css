@@ -1,5 +1,10 @@
 :root {
   --bg: #0f1117;
+  --bg-glow-1: rgba(235, 185, 113, 0.2);
+  --bg-glow-2: rgba(142, 175, 255, 0.12);
+  --bg-glow-3: rgba(99, 116, 180, 0.14);
+  --bg-grad-a: #0e1118;
+  --bg-grad-b: #0c1016;
   --panel: rgba(22, 25, 33, 0.78);
   --panel-2: rgba(28, 33, 44, 0.92);
   --ink: #eef2fa;
@@ -11,6 +16,46 @@
   --bad: #ff7a7a;
 }
 
+[data-theme="gold"] {
+  --bg-glow-1: rgba(235, 185, 113, 0.2);
+  --bg-glow-2: rgba(142, 175, 255, 0.12);
+  --bg-glow-3: rgba(99, 116, 180, 0.14);
+  --bg-grad-a: #0e1118;
+  --bg-grad-b: #0c1016;
+  --brand: #8b6a3f;
+  --brand-2: #d8b07a;
+}
+
+[data-theme="emerald"] {
+  --bg-glow-1: rgba(74, 201, 149, 0.22);
+  --bg-glow-2: rgba(110, 210, 190, 0.12);
+  --bg-glow-3: rgba(79, 122, 112, 0.16);
+  --bg-grad-a: #0b1513;
+  --bg-grad-b: #09110f;
+  --brand: #23785f;
+  --brand-2: #6fd1ad;
+}
+
+[data-theme="rose"] {
+  --bg-glow-1: rgba(235, 144, 168, 0.22);
+  --bg-glow-2: rgba(232, 166, 200, 0.14);
+  --bg-glow-3: rgba(134, 96, 138, 0.15);
+  --bg-grad-a: #161019;
+  --bg-grad-b: #0f0a11;
+  --brand: #9a4e70;
+  --brand-2: #e0a2bf;
+}
+
+[data-theme="ocean"] {
+  --bg-glow-1: rgba(101, 169, 235, 0.2);
+  --bg-glow-2: rgba(134, 203, 255, 0.14);
+  --bg-glow-3: rgba(88, 120, 189, 0.16);
+  --bg-grad-a: #0d1420;
+  --bg-grad-b: #09101a;
+  --brand: #2f5f92;
+  --brand-2: #89b8e8;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -19,10 +64,10 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(circle at 22% 8%, rgba(235, 185, 113, 0.2) 0%, transparent 30%),
-    radial-gradient(circle at 82% 6%, rgba(142, 175, 255, 0.12) 0%, transparent 28%),
-    radial-gradient(circle at 48% 120%, rgba(99, 116, 180, 0.14) 0%, transparent 40%),
-    linear-gradient(180deg, #0e1118 0%, #0c1016 100%),
+    radial-gradient(circle at 22% 8%, var(--bg-glow-1) 0%, transparent 30%),
+    radial-gradient(circle at 82% 6%, var(--bg-glow-2) 0%, transparent 28%),
+    radial-gradient(circle at 48% 120%, var(--bg-glow-3) 0%, transparent 40%),
+    linear-gradient(180deg, var(--bg-grad-a) 0%, var(--bg-grad-b) 100%),
     var(--bg);
   font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
   min-height: 100vh;
@@ -178,7 +223,7 @@ button {
   border: 0;
   border-radius: 999px;
   padding: 10px 18px;
-  background: linear-gradient(135deg, #8b6a3f, #d8b07a);
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
   color: #1f1810;
   cursor: pointer;
   font-weight: 700;
