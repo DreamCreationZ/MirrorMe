@@ -298,7 +298,7 @@ export default function StylistPage() {
       content: `Done. You can call me ${name}. I will introduce myself as ${name} from now.`
     };
     persist([...messages, note]);
-    speak(note.content);
+    if (modeRef.current === "talk") speak(note.content);
   }
 
   function setConversationMode(nextMode: "chat" | "talk") {
@@ -306,6 +306,10 @@ export default function StylistPage() {
     persistConfig({ name: stylistName, mode: nextMode, preferredLanguage, createdAt: Date.now() });
     if (nextMode === "talk") {
       enableVoice();
+      setTalkStatus(`Talk mode on. Say "${stylistName}" and then your request.`);
+      speak(`Talk mode is on. Say ${stylistName} and then your request.`);
+    } else {
+      setTalkStatus("");
     }
   }
 
@@ -435,7 +439,7 @@ export default function StylistPage() {
           closet,
           occasion,
           stylistName,
-          conversationMode: "chat",
+          conversationMode: modeRef.current,
           preferredLanguage
         })
       });
@@ -460,7 +464,9 @@ export default function StylistPage() {
       persist(withReply);
       setPendingImages([]);
       setPendingPersonImage("");
-      speak(assistant.content);
+      if (modeRef.current === "talk") {
+        speak(assistant.content);
+      }
       setTalkStatus(modeRef.current === "talk" ? "Reply ready." : "");
       return assistant.content;
     } catch (error) {
@@ -470,7 +476,9 @@ export default function StylistPage() {
         content: message
       };
       persist([...next, failMessage]);
-      speak(failMessage.content);
+      if (modeRef.current === "talk") {
+        speak(failMessage.content);
+      }
       setTalkStatus(`Error: ${message}`);
       return failMessage.content;
     } finally {
