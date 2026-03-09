@@ -42,7 +42,7 @@ export default function ClosetPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [items, setItems] = useState<ClosetItem[]>([]);
-  const [viewMode, setViewMode] = useState<"wardrobe" | "list">("wardrobe");
+  const [pageMode, setPageMode] = useState<"view" | "add">("view");
   const [form, setForm] = useState({
     category: "top" as ClosetItem["category"],
     name: "",
@@ -54,7 +54,6 @@ export default function ClosetPage() {
   const [normalizing, setNormalizing] = useState(false);
   const [normalizeNote, setNormalizeNote] = useState("");
   const [status, setStatus] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings>({
     preferredVendors: [],
     personaNotes: "",
@@ -66,7 +65,6 @@ export default function ClosetPage() {
     authTimeoutMinutes: 45,
     biometricSetup: false
   });
-  const [vendorsText, setVendorsText] = useState("");
 
   const [closetPasscode, setClosetPasscode] = useState("");
   const [setupPasscode, setSetupPasscode] = useState("");
@@ -106,7 +104,7 @@ export default function ClosetPage() {
   }
 
   function touchActivity() {
-    if (!wardrobeUnlocked || viewMode !== "wardrobe") return;
+    if (!wardrobeUnlocked || pageMode !== "view") return;
     if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
     idleTimerRef.current = window.setTimeout(() => {
       setAssistantPromptOpen(true);
@@ -201,7 +199,6 @@ export default function ClosetPage() {
       const loadedSettings = localStore.getAppSettings(user.id);
       if (loadedSettings) {
         setSettings(loadedSettings);
-        setVendorsText(loadedSettings.preferredVendors.join(", "));
       }
 
       const authKey = `fashion_closet_unlock_at:${user.id}`;
@@ -218,6 +215,10 @@ export default function ClosetPage() {
           }
         ]);
       }
+      if (typeof window !== "undefined") {
+        const section = new URLSearchParams(window.location.search).get("section");
+        setPageMode(section === "add" ? "add" : "view");
+      }
     });
   }, [router]);
 
@@ -228,24 +229,7 @@ export default function ClosetPage() {
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wardrobeUnlocked, viewMode, items.length]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const section = new URLSearchParams(window.location.search).get("section");
-    if (section === "view") {
-      setViewMode("wardrobe");
-      setTimeout(() => {
-        document.getElementById("closet-view-block")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 120);
-      return;
-    }
-    if (section === "add") {
-      setTimeout(() => {
-        document.getElementById("closet-add-block")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 120);
-    }
-  }, []);
+  }, [wardrobeUnlocked, pageMode, items.length]);
 
   async function unlockWardrobe() {
     if (!userId) return;
@@ -525,26 +509,9 @@ export default function ClosetPage() {
   }
 
   return (
-    <section className="grid cols-2 phone-grid" onMouseMove={touchActivity} onClick={touchActivity} onKeyDown={touchActivity}>
-      <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button type="button" className="secondary" onClick={() => setSettingsOpen((v) => !v)}>⚙️ Account</button>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              setWardrobeUnlocked(false);
-              localStorage.removeItem(`fashion_closet_unlock_at:${userId}`);
-              router.push("/stylist");
-            }}
-          >
-            Talk to Stylist
-          </button>
-        </div>
-      </div>
-
-      {assistantPromptOpen ? (
-        <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
+    <section className="grid phone-grid" onMouseMove={touchActivity} onClick={touchActivity} onKeyDown={touchActivity}>
+      {assistantPromptOpen && pageMode === "view" ? (
+        <article className="card phone-card">
           <h3>{settings.assistantName || "MirrorMe"} Assistant</h3>
           <p>{assistantMessage}</p>
           <div style={{ display: "flex", gap: 8 }}>
@@ -564,195 +531,148 @@ export default function ClosetPage() {
         </article>
       ) : null}
 
-      {assistantMessage && !assistantPromptOpen ? (
-        <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
-          <p style={{ margin: 0 }}>{assistantMessage}</p>
-        </article>
-      ) : null}
+      {pageMode === "view" ? (
+        <>
+          <article className="card phone-card" id="closet-view-block">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <h2 style={{ margin: 0 }}>Choose Your Outfit</h2>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setPageMode("add");
+                  router.push("/closet?section=add");
+                }}
+              >
+                Add Closet
+              </button>
+            </div>
 
-      <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
-        <h3>{settings.assistantName || "MirrorMe"} Wardrobe Assistant</h3>
-        <div style={{ display: "grid", gap: 8, maxHeight: 220, overflow: "auto", marginBottom: 10 }}>
-          {assistantChat.map((msg, idx) => (
-            <div
-              key={`${msg.role}-${idx}`}
-              style={{
-                justifySelf: msg.role === "user" ? "end" : "start",
-                maxWidth: "86%",
-                borderRadius: 12,
-                padding: "8px 10px",
-                background: msg.role === "user" ? "linear-gradient(135deg,var(--brand),var(--brand-2))" : "rgba(255,255,255,0.08)",
-                color: msg.role === "user" ? "#1b130d" : "#eef2fa"
+            <div className="grid" style={{ gap: 10 }}>
+              {CATEGORY_ORDER.map((cat) => (
+                <div key={cat} style={{ border: "1px solid rgba(255,255,255,0.15)", borderRadius: 14, padding: 10, background: "rgba(255,255,255,0.04)" }}>
+                  <strong style={{ display: "inline-block", marginBottom: 8 }}>{CATEGORY_LABEL[cat]}</strong>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                    {grouped[cat].slice(0, 3).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="secondary"
+                        style={{ borderRadius: 10, padding: 6, textAlign: "left", minHeight: 96 }}
+                        onClick={() => void markWorn(item.id)}
+                      >
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.name} style={{ width: "100%", borderRadius: 8, height: 72, objectFit: "cover" }} />
+                        ) : (
+                          <div className="wardrobe-placeholder small" style={{ minHeight: 72 }}>No image</div>
+                        )}
+                      </button>
+                    ))}
+                    {!grouped[cat].length ? <div className="small">No items</div> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="card phone-card">
+            <h3>{settings.assistantName || "MirrorMe"} Assistant</h3>
+            <div style={{ display: "grid", gap: 8, maxHeight: 220, overflow: "auto", marginBottom: 10 }}>
+              {assistantChat.map((msg, idx) => (
+                <div
+                  key={`${msg.role}-${idx}`}
+                  style={{
+                    justifySelf: msg.role === "user" ? "end" : "start",
+                    maxWidth: "86%",
+                    borderRadius: 12,
+                    padding: "8px 10px",
+                    background: msg.role === "user" ? "linear-gradient(135deg,var(--brand),var(--brand-2))" : "rgba(255,255,255,0.08)",
+                    color: msg.role === "user" ? "#1b130d" : "#eef2fa"
+                  }}
+                >
+                  {msg.content}
+                </div>
+              ))}
+              {!assistantChat.length ? <p className="small">Ask me to pick a look and I will guide you live.</p> : null}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={assistantInput}
+                onChange={(e) => setAssistantInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendAssistantMessage();
+                  }
+                }}
+                placeholder="Ask your stylist: what should I wear?"
+              />
+              <button type="button" onClick={sendAssistantMessage}>Send</button>
+              <button type="button" className="secondary" onClick={pickAssistantOutfit}>Pick for me</button>
+            </div>
+          </article>
+        </>
+      ) : (
+        <article className="card phone-card" id="closet-add-block">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <h2 style={{ margin: 0 }}>Add Closet Item</h2>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setPageMode("view");
+                router.push("/closet?section=view");
               }}
             >
-              {msg.content}
-            </div>
-          ))}
-          {!assistantChat.length ? <p className="small">Ask me to pick a look and I will guide you live.</p> : null}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={assistantInput}
-            onChange={(e) => setAssistantInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                sendAssistantMessage();
-              }
-            }}
-            placeholder="Ask your stylist: what should I wear?"
-          />
-          <button type="button" onClick={sendAssistantMessage}>Send</button>
-          <button type="button" className="secondary" onClick={pickAssistantOutfit}>Pick for me</button>
-        </div>
-      </article>
-
-      {settingsOpen ? (
-        <article className="card phone-card" style={{ gridColumn: "1 / -1" }}>
-          <h3>Settings</h3>
-          <div className="grid cols-2">
+              My Closet
+            </button>
+          </div>
+          <form onSubmit={onSubmit}>
             <label>
-              Preferred vendors (comma separated)
-              <input value={vendorsText} onChange={(e) => setVendorsText(e.target.value)} />
-            </label>
-            <label>
-              Assistant name
-              <input value={settings.assistantName} onChange={(e) => setSettings((s) => ({ ...s, assistantName: e.target.value }))} />
-            </label>
-            <label>
-              Persona notes
-              <textarea value={settings.personaNotes} rows={3} onChange={(e) => setSettings((s) => ({ ...s, personaNotes: e.target.value }))} />
-            </label>
-            <label>
-              Recommendation mode
-              <select
-                value={settings.showOverlayRecommendations ? "overlay" : "clothes"}
-                onChange={(e) => setSettings((s) => ({ ...s, showOverlayRecommendations: e.target.value === "overlay" }))}
-              >
-                <option value="overlay">Overlay on user</option>
-                <option value="clothes">Only clothes</option>
+              Category
+              <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as ClosetItem["category"] }))}>
+                <option value="top">Top</option>
+                <option value="bottom">Bottom</option>
+                <option value="dress">Dress</option>
+                <option value="outerwear">Outerwear</option>
+                <option value="shoes">Shoes</option>
+                <option value="sandal">Sandal</option>
+                <option value="accessory">Accessory</option>
               </select>
             </label>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (!userId) return;
-              const next = { ...settings, preferredVendors: vendorsText.split(",").map((x) => x.trim()).filter(Boolean) };
-              setSettings(next);
-              localStore.setAppSettings(userId, next);
-              setStatus("Settings saved.");
-            }}
-          >
-            Save Settings
-          </button>
+            <label>
+              Label (shirt, top, pant, etc.)
+              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Example: White Shirt" />
+            </label>
+            <label>
+              Color
+              <input value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} placeholder="Optional" />
+            </label>
+            <label>
+              Tags (comma separated)
+              <input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} />
+            </label>
+            <label>
+              Image URL (optional)
+              <input value={form.imageUrl} onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))} />
+            </label>
+            <label>
+              Upload Garment Photo
+              <input type="file" accept="image/*" onChange={onImageUpload} />
+            </label>
+            {normalizing ? <p className="small">Normalizing image for clean wardrobe layout...</p> : null}
+            {normalizeNote ? <p className="small">{normalizeNote}</p> : null}
+            {uploadPreview ? (
+              <div style={{ border: "1px solid #e5d4bf", borderRadius: 10, padding: 8, marginBottom: 10 }}>
+                <p className="small" style={{ marginTop: 0 }}>Normalized preview</p>
+                <img src={uploadPreview} alt="Normalized garment preview" style={{ width: "100%", borderRadius: 8 }} />
+              </div>
+            ) : null}
+            <button type="submit">Add Item</button>
+          </form>
+          {status ? <p className="small">{status}</p> : null}
         </article>
-      ) : null}
-
-      <article className="card phone-card" id="closet-add-block">
-        <h2>Add Closet Item</h2>
-        <form onSubmit={onSubmit}>
-          <label>
-            Category
-            <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as ClosetItem["category"] }))}>
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="dress">Dress</option>
-              <option value="outerwear">Outerwear</option>
-              <option value="shoes">Shoes</option>
-              <option value="sandal">Sandal</option>
-              <option value="accessory">Accessory</option>
-            </select>
-          </label>
-          <label>
-            Label (shirt, top, pant, etc.)
-            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Example: White Shirt" />
-          </label>
-          <label>
-            Color
-            <input value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} placeholder="Optional" />
-          </label>
-          <label>
-            Tags (comma separated)
-            <input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} />
-          </label>
-          <label>
-            Image URL (optional)
-            <input value={form.imageUrl} onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))} />
-          </label>
-          <label>
-            Upload Garment Photo
-            <input type="file" accept="image/*" onChange={onImageUpload} />
-          </label>
-          {normalizing ? <p className="small">Normalizing image for clean wardrobe layout...</p> : null}
-          {normalizeNote ? <p className="small">{normalizeNote}</p> : null}
-          {uploadPreview ? (
-            <div style={{ border: "1px solid #e5d4bf", borderRadius: 10, padding: 8, marginBottom: 10 }}>
-              <p className="small" style={{ marginTop: 0 }}>Normalized preview</p>
-              <img src={uploadPreview} alt="Normalized garment preview" style={{ width: "100%", borderRadius: 8 }} />
-            </div>
-          ) : null}
-          <button type="submit">Add Item</button>
-        </form>
-        {status ? <p className="small">{status}</p> : null}
-      </article>
-
-      <article className="card phone-card" id="closet-view-block">
-        <h2>My Closet ({items.length})</h2>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <button type="button" className={viewMode === "wardrobe" ? "" : "secondary"} onClick={() => setViewMode("wardrobe")}>Wardrobe View</button>
-          <button type="button" className={viewMode === "list" ? "" : "secondary"} onClick={() => setViewMode("list")}>List View</button>
-        </div>
-
-        {viewMode === "wardrobe" ? (
-          <div className="grid" style={{ gap: 12 }}>
-            {CATEGORY_ORDER.map((cat) => (
-              <div key={cat} style={{ border: "1px solid #e7d4be", borderRadius: 12, padding: 10 }}>
-                <strong>{CATEGORY_LABEL[cat]}</strong>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, marginTop: 8 }}>
-                  {grouped[cat].slice(0, 6).map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="secondary"
-                      style={{ borderRadius: 10, padding: 8, textAlign: "left" }}
-                      onClick={() => void markWorn(item.id)}
-                    >
-                      {item.imageUrl ? (
-                        <img src={item.imageUrl} alt={item.name} style={{ width: "100%", borderRadius: 8, maxHeight: 90, objectFit: "cover" }} />
-                      ) : (
-                        <div className="wardrobe-placeholder small" style={{ minHeight: 68 }}>No image</div>
-                      )}
-                      <div className="small" style={{ marginTop: 4 }}>{item.name}</div>
-                    </button>
-                  ))}
-                  {!grouped[cat].length ? <div className="small">No items</div> : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid">
-            {items.map((item) => (
-              <div key={item.id} style={{ border: "1px solid #e7d4be", borderRadius: 12, padding: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <strong>{item.name}</strong>
-                  <span className="badge">{item.category}</span>
-                </div>
-                <p className="small" style={{ marginBottom: 6 }}>{item.color}</p>
-                <p className="small">{item.tags.join(", ") || "No tags"}</p>
-                <p className="small" style={{ marginBottom: 8 }}>
-                  {item.lastWornAt
-                    ? `Last worn: ${new Date(item.lastWornAt).toLocaleDateString()} · Worn ${item.wearCount ?? 1} times`
-                    : "Not marked worn yet"}
-                </p>
-                <button type="button" className="secondary" onClick={() => markWorn(item.id)}>Mark as Worn Today</button>
-              </div>
-            ))}
-            {!items.length ? <p className="small">No items yet.</p> : null}
-          </div>
-        )}
-      </article>
+      )}
     </section>
   );
 }
