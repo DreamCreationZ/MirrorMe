@@ -5,9 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
-import { loadCloset, loadProfile, saveProfile } from "@/lib/persistence";
-import { AppSettings, ClosetItem, UserProfile } from "@/types/models";
+import { loadProfile, saveProfile } from "@/lib/persistence";
+import { AppSettings, UserProfile } from "@/types/models";
 import { LuxShowcase } from "@/components/LuxShowcase";
+
+const GUEST_PHRASES = [
+  "Hey, welcome to your personal dressing room.",
+  "Looks like you are not checked in yet.",
+  "Please log in and I will take you on a quick tour."
+] as const;
 
 const defaultSettings: AppSettings = {
   preferredVendors: [],
@@ -18,107 +24,28 @@ const defaultSettings: AppSettings = {
   passcode: "1234"
 };
 
-function preferredFemaleVoice(voices: SpeechSynthesisVoice[]) {
-  const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female|aria|siri)/i;
-  return (
-    voices.find((v) => /en|hi/i.test(v.lang) && femaleHint.test(v.name)) ||
-    voices.find((v) => femaleHint.test(v.name)) ||
-    voices.find((v) => /en|hi/i.test(v.lang)) ||
-    voices[0]
-  );
-}
-
-function weatherSummary(code?: number, temp?: number) {
-  const conditions: Record<number, string> = {
-    0: "Clear",
-    1: "Mostly clear",
-    2: "Partly cloudy",
-    3: "Cloudy",
-    45: "Foggy",
-    61: "Rainy",
-    63: "Moderate rain",
-    71: "Snowy"
-  };
-  const label = typeof code === "number" ? conditions[code] || "Mixed" : "Mixed";
-  const t = typeof temp === "number" ? `${Math.round(temp)}°C` : "--";
-  return `${label}, ${t}`;
-}
-
 export default function WelcomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [authResolved, setAuthResolved] = useState(false);
   const [guestMode, setGuestMode] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [closet, setCloset] = useState<ClosetItem[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [guideChoice, setGuideChoice] = useState<"idle" | "yes" | "skip">("idle");
   const [passcode, setPasscode] = useState("");
   const [authOk, setAuthOk] = useState(false);
   const [status, setStatus] = useState("");
-  const [weather, setWeather] = useState("Loading weather...");
   const [doorsOpen, setDoorsOpen] = useState(false);
-  const [showAllCloset, setShowAllCloset] = useState(false);
   const [typed, setTyped] = useState("");
   const [phraseIndex, setPhraseIndex] = useState(0);
+  const [doorMessageIndex, setDoorMessageIndex] = useState(0);
 
-  const guestPhrases = [
-    "Hey, welcome to your personal dressing room.",
-    "Looks like you are not checked in yet.",
-    "Please log in and I will take you on a quick tour."
-  ];
-
-  const recommendations = useMemo(() => {
-    const iconFor: Record<string, string> = {
-      tops: "👕",
-      bottoms: "👖",
-      dresses: "👗",
-      sarees: "🥻",
-      shoes: "👠",
-      accessories: "👜"
-    };
-    const nameFor: Record<string, string> = {
-      tops: "Refined top pick",
-      bottoms: "Balanced bottom pick",
-      dresses: "Elegant dress pick",
-      sarees: "Classic saree pick",
-      shoes: "Comfort + style shoes",
-      accessories: "Finishing accessories"
-    };
-
-    const categories = Array.from(
-      new Set(closet.map((item) => (item.category || "").toLowerCase()).filter(Boolean))
-    );
-
-    if (categories.length === 0) {
-      return [
-        { id: "default-1", title: "Polished Work Set", hint: "Smart and practical", icon: "✨" },
-        { id: "default-2", title: "Effortless Casual", hint: "Clean everyday look", icon: "🌙" },
-        { id: "default-3", title: "Evening Glow", hint: "Dressy, confident vibe", icon: "💫" }
-      ];
-    }
-
-    return categories.slice(0, 5).map((cat, idx) => ({
-      id: `${cat}-${idx}`,
-      title: nameFor[cat] || "Signature look",
-      hint: `From your ${cat} collection`,
-      icon: iconFor[cat] || "✨"
-    }));
-  }, [closet]);
-
-  function speak(text: string) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    const speech = new SpeechSynthesisUtterance(text);
-    const voice = preferredFemaleVoice(window.speechSynthesis.getVoices());
-    if (voice) {
-      speech.voice = voice;
-      speech.lang = voice.lang;
-    }
-    speech.rate = 0.95;
-    speech.pitch = 1.14;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(speech);
-  }
+  const doorMessages = useMemo(() => {
+    const name = profile?.name || "there";
+    return [
+      `Hey ${name}, welcome to your personal dressing room.`,
+      "I will be your personal assistant throughout your personal dressing room. Go to the occasion page to select your occasion. Once you select the occasion, the stylist page will open and I will be there with better suggestions for your day. Let's go."
+    ];
+  }, [profile?.name]);
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -135,8 +62,6 @@ export default function WelcomePage() {
         return;
       }
       setProfile(loadedProfile);
-      const loadedCloset = await loadCloset(user.id);
-      setCloset(loadedCloset);
       const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
       setSettings(loadedSettings);
       setAuthResolved(true);
@@ -145,7 +70,7 @@ export default function WelcomePage() {
 
   useEffect(() => {
     if (!guestMode) return;
-    const phrase = guestPhrases[phraseIndex] || "";
+    const phrase = GUEST_PHRASES[phraseIndex] || "";
     let i = 0;
     setTyped("");
     const timer = setInterval(() => {
@@ -153,47 +78,27 @@ export default function WelcomePage() {
       setTyped(phrase.slice(0, i));
       if (i >= phrase.length) {
         clearInterval(timer);
-        setTimeout(() => setPhraseIndex((v) => (v + 1) % guestPhrases.length), 900);
+        setTimeout(() => setPhraseIndex((v) => (v + 1) % GUEST_PHRASES.length), 900);
       }
     }, 26);
     return () => clearInterval(timer);
   }, [guestMode, phraseIndex]);
 
   useEffect(() => {
-    if (!authOk || !profile) return;
-    const greet = `Good morning ${profile.name}. Welcome back. Weather update: ${weather}. I picked fresh style ideas for you.`;
-    speak(greet);
-  }, [authOk, profile, weather]);
-
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setWeather("Location disabled");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      try {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
-        const data = (await res.json()) as {
-          current_weather?: { temperature?: number; weathercode?: number };
-        };
-        setWeather(weatherSummary(data.current_weather?.weathercode, data.current_weather?.temperature));
-      } catch {
-        setWeather("Unavailable");
-      }
-    }, () => setWeather("Unavailable"));
-  }, []);
+    if (!authOk) return;
+    setDoorMessageIndex(0);
+    const timer = setTimeout(() => setDoorMessageIndex(1), 4300);
+    return () => clearTimeout(timer);
+  }, [authOk]);
 
   async function authenticate() {
-    if (settings.authMethod === "passcode") {
-      if (passcode !== (settings.passcode || "1234")) {
-        setStatus("Invalid passcode.");
-        return;
-      }
+    if (settings.authMethod === "passcode" && passcode !== (settings.passcode || "1234")) {
+      setStatus("Invalid passcode.");
+      return;
     }
+    setStatus("");
     setAuthOk(true);
-    setTimeout(() => setDoorsOpen(true), 280);
+    setTimeout(() => setDoorsOpen(true), 320);
   }
 
   async function continueToOccasion() {
@@ -204,15 +109,6 @@ export default function WelcomePage() {
     }
     await saveProfile(userId, profile);
     router.push("/occasion");
-  }
-
-  function chooseGuide(choice: "yes" | "skip") {
-    setGuideChoice(choice);
-    if (choice === "yes") {
-      speak("I will guide you page by page. Start with occasion, then chat, then virtual try on.");
-      return;
-    }
-    speak("That is fine. Please choose your occasion and I am ready to style you.");
   }
 
   return (
@@ -247,7 +143,7 @@ export default function WelcomePage() {
           <h1>Welcome</h1>
           {!authOk ? (
             <div className="grid">
-              <p className="small">Authenticate to enter your virtual room.</p>
+              <p className="small">Authenticate to enter your personal dressing room.</p>
               <label>
                 Auth method
                 <select
@@ -271,58 +167,17 @@ export default function WelcomePage() {
             </div>
           ) : (
             <div className="grid">
-              <div className={doorsOpen ? "virtual-room doors-open" : "virtual-room"}>
-                <div className="door left" />
-                <div className="door right" />
+              <div className={doorsOpen ? "virtual-room single-door doors-open" : "virtual-room single-door"}>
+                <div className="door glass" />
                 <div className="room-content">
-                  <p className="small">Weather: {weather}</p>
-                  <p>Hey {profile?.name || "there"}, your mirror room is open. Ready when you are.</p>
+                  <p key={doorMessageIndex} className="door-message">{doorMessages[doorMessageIndex]}</p>
                 </div>
-              </div>
-
-              <div className="grid cols-2">
-                <button type="button" onClick={() => chooseGuide("yes")}>Yes, guide me</button>
-                <button type="button" className="secondary" onClick={() => chooseGuide("skip")}>Skip</button>
-              </div>
-
-              {guideChoice !== "idle" ? (
-                <p className="small">
-                  {guideChoice === "yes"
-                    ? "Step 1: pick occasion. Step 2: chat with stylist. Step 3: virtual try-on."
-                    : "Choose your occasion. I am ready to style you."}
-                </p>
-              ) : null}
-
-              <p className="small">Here are your recommendations for today:</p>
-              <div className="grid cols-3">
-                {recommendations.length ? recommendations.map((item) => (
-                  <div key={item.id} className="badge" style={{ padding: 8 }}>
-                    <div className={settings.showOverlayRecommendations ? "recommend-card overlay-look" : "recommend-card no-image"}>
-                      <span style={{ fontSize: 24 }}>{item.icon}</span>
-                    </div>
-                    <p className="small" style={{ margin: "6px 0 0", fontWeight: 700 }}>{item.title}</p>
-                    <p className="small" style={{ margin: "2px 0 0" }}>{item.hint}</p>
-                  </div>
-                )) : <p className="small">No closet items yet. Add in closet.</p>}
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="secondary" onClick={() => setShowAllCloset((v) => !v)}>
-                  {showAllCloset ? "Dismiss All" : "Show All Closet"}
-                </button>
-                <button type="button" onClick={continueToOccasion}>Choose Occasion</button>
-                <button type="button" className="secondary" onClick={() => router.push("/stylist")}>Assistant</button>
+                <button type="button" onClick={continueToOccasion}>Go to Occasion</button>
+                <button type="button" className="secondary" onClick={() => router.push("/stylist")}>Open Stylist</button>
               </div>
-              {showAllCloset ? (
-                <div className="grid cols-3">
-                  {closet.map((item) => (
-                    <div key={`all-${item.id}`} className="badge" style={{ padding: 8 }}>
-                      <p className="small" style={{ margin: 0 }}>{item.name}</p>
-                      <p className="small" style={{ margin: 0 }}>{item.category}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
             </div>
           )}
           {status ? <p className="small">{status}</p> : null}
