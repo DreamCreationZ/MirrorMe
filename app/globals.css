@@ -281,6 +281,61 @@ button.secondary {
   color: #ebf0fe;
 }
 
+.nav a.nav-active {
+  background: linear-gradient(135deg, rgba(180, 139, 82, 0.42), rgba(228, 191, 131, 0.38));
+  border: 1px solid rgba(228, 191, 131, 0.55);
+}
+
+.app-nav-wrap {
+  position: sticky;
+  top: 8px;
+  z-index: 35;
+  margin-bottom: 12px;
+  backdrop-filter: blur(6px);
+}
+
+.bottom-nav {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    padding-bottom: 84px;
+  }
+
+  .bottom-nav {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    z-index: 55;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    background: rgba(16, 20, 29, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    padding: 8px;
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.48);
+    backdrop-filter: blur(10px);
+  }
+
+  .bottom-nav a {
+    text-align: center;
+    font-size: 12px;
+    padding: 8px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #ebf0fe;
+  }
+
+  .bottom-nav a.bottom-nav-active {
+    background: linear-gradient(135deg, rgba(180, 139, 82, 0.5), rgba(228, 191, 131, 0.45));
+    color: #1f1810;
+    font-weight: 700;
+  }
+}
+
 .small {
   font-size: 13px;
   color: var(--muted);

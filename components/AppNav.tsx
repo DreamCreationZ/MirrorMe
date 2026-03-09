@@ -77,10 +77,11 @@ export function AppNav() {
   }
 
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", position: "relative" }}>
+    <div className="app-nav-wrap">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", position: "relative" }}>
       <nav className="nav" aria-label="Main navigation">
         {links.map(([label, href]) => (
-          <Link key={href} href={href}>
+          <Link key={href} href={href} className={pathname === href ? "nav-active" : ""}>
             {label}
           </Link>
         ))}
@@ -155,6 +156,14 @@ export function AppNav() {
           </div>
         </div>
       ) : null}
+      </div>
+      <nav className="bottom-nav" aria-label="Quick navigation">
+        {links.map(([label, href]) => (
+          <Link key={`bottom-${href}`} href={href} className={pathname === href ? "bottom-nav-active" : ""}>
+            {label}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }

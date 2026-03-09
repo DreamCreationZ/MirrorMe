@@ -90,7 +90,6 @@ export default function StylistPage() {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [talkStatus, setTalkStatus] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const chatListRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef<"chat" | "talk">("chat");
@@ -373,28 +372,8 @@ export default function StylistPage() {
             >
               Talk
             </button>
-            <button type="button" className="secondary" onClick={() => setMenuOpen((v) => !v)} title="More">
-              ⋯
-            </button>
           </div>
         </div>
-
-        {menuOpen ? (
-          <div style={{ justifySelf: "end", display: "flex", gap: 8, marginTop: 8 }}>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                const initial = [introMessage(stylistName)];
-                persist(initial);
-                setMenuOpen(false);
-              }}
-            >
-              Clear Chat
-            </button>
-            <button type="button" className="secondary" onClick={() => router.push("/try-on")}>Open Try-On</button>
-          </div>
-        ) : null}
 
         <div
           style={{
