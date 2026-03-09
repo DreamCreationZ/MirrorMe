@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { getCurrentUser, logout, onAuthChange } from "@/lib/auth";
 import { loadProfile, saveProfile } from "@/lib/persistence";
 import { UserProfile } from "@/types/models";
@@ -14,6 +15,7 @@ const links = [
 ] as const;
 
 export function AppNav() {
+  const pathname = usePathname();
   const [userName, setUserName] = useState("");
   const [userId, setUserId] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,7 +80,7 @@ export function AppNav() {
             <span>{(userName || "U").slice(0, 1).toUpperCase()}</span>
           )}
         </span>
-        {userName ? <span className="small">Signed in as {userName}</span> : null}
+        {userName && pathname !== "/stylist" ? <span className="small">Signed in as {userName}</span> : null}
         {!userName ? (
           <Link href="/login">
             <button className="secondary">Log In</button>
@@ -86,7 +88,7 @@ export function AppNav() {
         ) : (
           <>
             <button className="secondary" onClick={() => setMenuOpen((v) => !v)}>
-              Menu
+              ⋯
             </button>
           </>
         )}

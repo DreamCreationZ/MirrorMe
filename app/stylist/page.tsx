@@ -5,13 +5,7 @@ import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
 import { loadCloset, loadProfile } from "@/lib/persistence";
-import {
-  ClosetItem,
-  StylistConfig,
-  StylistMessage,
-  StylistRecommendation,
-  UserProfile
-} from "@/types/models";
+import { ClosetItem, StylistConfig, StylistMessage, StylistRecommendation, UserProfile } from "@/types/models";
 
 type SpeechRec = {
   lang: string;
@@ -27,7 +21,7 @@ type SpeechRecCtor = new () => SpeechRec;
 function introMessage(name: string): StylistMessage {
   return {
     role: "assistant",
-    content: `Hey, I am your personal stylist ${name}. You can name me anything you like, and I will call myself by that name.`
+    content: `Hey, I am your personal stylist ${name}. You can name me and I will call myself by that name.`
   };
 }
 
@@ -81,36 +75,21 @@ export default function StylistPage() {
 
   const [stylistName, setStylistName] = useState("Meera");
   const [mode, setMode] = useState<"chat" | "talk">("chat");
-  const [listening, setListening] = useState(false);
-  const [talkStatus, setTalkStatus] = useState("");
-
   const [messages, setMessages] = useState<StylistMessage[]>([]);
   const [input, setInput] = useState("");
-  const [attachmentOpen, setAttachmentOpen] = useState(false);
-  const [pendingPersonImage, setPendingPersonImage] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [talkStatus, setTalkStatus] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const chatListRef = useRef<HTMLDivElement | null>(null);
-  const recognizerRef = useRef<SpeechRec | null>(null);
   const modeRef = useRef<"chat" | "talk">("chat");
+  const recognizerRef = useRef<SpeechRec | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     modeRef.current = mode;
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode !== "talk") {
-      if (recognizerRef.current) {
-        recognizerRef.current.stop();
-        recognizerRef.current = null;
-      }
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-      setListening(false);
-      setTalkStatus("");
-    }
   }, [mode]);
 
   useEffect(() => {
@@ -131,13 +110,12 @@ export default function StylistPage() {
         setStylistName(config.name || "Meera");
         setMode(config.mode || "chat");
       } else {
-        const firstConfig: StylistConfig = {
+        localStore.setStylistConfig(user.id, {
           name: "Meera",
           mode: "chat",
           preferredLanguage: "English",
           createdAt: Date.now()
-        };
-        localStore.setStylistConfig(user.id, firstConfig);
+        });
       }
 
       const saved = localStore.getStylistMessages(user.id);
@@ -157,10 +135,10 @@ export default function StylistPage() {
       const base = saved.length ? saved : [introMessage(config?.name || "Meera")];
       let next = base;
       if (seenBefore && !sessionWelcomed) {
-        const welcome = welcomeBackMessage(loadedProfile?.name || user.name || "there");
-        next = [...base, welcome];
+        next = [...base, welcomeBackMessage(loadedProfile?.name || user.name || "there")];
         if (typeof window !== "undefined") sessionStorage.setItem(sessionWelcomeKey, "1");
       }
+
       setMessages(next);
       localStore.setStylistMessages(user.id, next);
       if (typeof window !== "undefined") localStorage.setItem(seenKey, "1");
@@ -170,6 +148,20 @@ export default function StylistPage() {
   useEffect(() => {
     chatListRef.current?.scrollTo({ top: chatListRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (mode !== "talk") {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognizerRef.current) {
+        recognizerRef.current.stop();
+        recognizerRef.current = null;
+      }
+      setListening(false);
+      setTalkStatus("");
+    }
+  }, [mode]);
 
   function persist(next: StylistMessage[]) {
     setMessages(next);
@@ -188,7 +180,7 @@ export default function StylistPage() {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(speechText(text));
     const voices = window.speechSynthesis.getVoices();
-    const wantsFemale = /(meera|sera|sara|riya|priya|anita|swati)/i.test(stylistName + " " + (profile?.name || ""));
+    const wantsFemale = /(meera|sera|sara|riya|priya|anita|swati)/i.test(`${stylistName} ${profile?.name || ""}`);
     const picked = pickPreferredVoice(voices, wantsFemale);
     if (picked) {
       utterance.voice = picked;
@@ -196,9 +188,8 @@ export default function StylistPage() {
     }
     utterance.rate = 0.95;
     utterance.pitch = wantsFemale ? 1.15 : 1.0;
-    utterance.volume = 1;
     utterance.onstart = () => setTalkStatus("Speaking...");
-    utterance.onend = () => setTalkStatus("Tap Listening to continue.");
+    utterance.onend = () => setTalkStatus("Tap mic to record again.");
     window.speechSynthesis.speak(utterance);
   }
 
@@ -211,27 +202,11 @@ export default function StylistPage() {
     });
   }
 
-  async function onImageAttach(e: ChangeEvent<HTMLInputElement>) {
+  async function onAttachImages(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const images = await Promise.all(files.map((f) => fileToDataUrl(f)));
-    setPendingImages((prev) => [...prev, ...images].slice(0, 6));
-  }
-
-  async function onPersonImageAttach(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPendingPersonImage(await fileToDataUrl(file));
-  }
-
-  function openTryOnFromChat() {
-    if (!userId) return;
-    localStore.setTryOnPreset(userId, {
-      personImage: pendingPersonImage || profile?.frontImageUrl,
-      garmentImages: pendingImages,
-      createdAt: Date.now()
-    });
-    router.push("/try-on");
+    setPendingImages((prev) => [...prev, ...images].slice(0, 8));
   }
 
   function startVoiceInput() {
@@ -265,14 +240,14 @@ export default function StylistPage() {
         setInput(text);
         void sendMessage(text);
       } else {
-        setTalkStatus("Could not hear clearly. Tap Listening again.");
+        setTalkStatus("Could not hear clearly. Tap mic and try again.");
       }
     };
 
     rec.onerror = () => {
       setListening(false);
       rec.stop();
-      setTalkStatus("Mic error. Tap Listening and try again.");
+      setTalkStatus("Mic error. Tap mic and try again.");
     };
 
     rec.start();
@@ -289,10 +264,7 @@ export default function StylistPage() {
       persistConfig({ name: renamed, mode: modeRef.current, preferredLanguage: "English", createdAt: Date.now() });
 
       const userMessage: StylistMessage = { role: "user", content: messageText };
-      const assistantMessage: StylistMessage = {
-        role: "assistant",
-        content: `Done. I will call myself ${renamed} from now.`
-      };
+      const assistantMessage: StylistMessage = { role: "assistant", content: `Done. I will call myself ${renamed} from now.` };
       const next = [...messages, userMessage, assistantMessage];
       persist(next);
       setInput("");
@@ -300,11 +272,10 @@ export default function StylistPage() {
       return;
     }
 
-    const images = pendingPersonImage ? [pendingPersonImage, ...pendingImages] : pendingImages;
     const userMessage: StylistMessage = {
       role: "user",
       content: messageText || "Please review these images honestly.",
-      images
+      images: pendingImages.length ? pendingImages : undefined
     };
 
     const next = [...messages, userMessage];
@@ -328,15 +299,8 @@ export default function StylistPage() {
         })
       });
 
-      const data = (await res.json()) as {
-        reply?: string;
-        error?: string;
-        recommendation?: StylistRecommendation;
-      };
-
-      if (!res.ok) {
-        throw new Error(data.error || "Stylist service failed.");
-      }
+      const data = (await res.json()) as { reply?: string; error?: string; recommendation?: StylistRecommendation };
+      if (!res.ok) throw new Error(data.error || "Stylist service failed.");
 
       const assistant: StylistMessage = {
         role: "assistant",
@@ -344,10 +308,8 @@ export default function StylistPage() {
         recommendation: data.recommendation
       };
 
-      const withReply = [...next, assistant];
-      persist(withReply);
+      persist([...next, assistant]);
       setPendingImages([]);
-      setPendingPersonImage("");
       if (modeRef.current === "talk") speak(assistant.content);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Stylist is temporarily unavailable.";
@@ -367,127 +329,136 @@ export default function StylistPage() {
 
   return (
     <section className="grid phone-grid">
-      <article className="card phone-card">
-        <h2>{stylistName}</h2>
-        <p className="small">Occasion: <strong>{occasion || "casual"}</strong></p>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <button type="button" className={mode === "chat" ? "" : "secondary"} onClick={() => setMode("chat")}>
-            Chat
-          </button>
-          <button
-            type="button"
-            className={mode === "talk" ? "" : "secondary"}
-            onClick={() => {
-              setMode("talk");
-              setTalkStatus(`Talk mode on. Tap Listening and speak naturally.`);
-            }}
-          >
-            Talk
-          </button>
-          {mode === "talk" ? (
-            <button type="button" className="secondary" onClick={startVoiceInput} disabled={listening || loading}>
-              {listening ? "Listening..." : "Listening"}
+      <article className="card phone-card" style={{ height: "calc(100vh - 170px)", display: "grid", gridTemplateRows: "auto 1fr" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <h2 style={{ margin: 0 }}>{stylistName}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button type="button" className={mode === "chat" ? "" : "secondary"} onClick={() => setMode("chat")}>Chat</button>
+            <button
+              type="button"
+              className={mode === "talk" ? "" : "secondary"}
+              onClick={() => {
+                setMode("talk");
+                setTalkStatus("Talk mode on. Tap mic and speak.");
+              }}
+            >
+              Talk
             </button>
-          ) : null}
+            <button type="button" className="secondary" onClick={() => setMenuOpen((v) => !v)} title="More">
+              ⋯
+            </button>
+          </div>
         </div>
 
-        {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
+        {menuOpen ? (
+          <div style={{ justifySelf: "end", display: "flex", gap: 8, marginTop: 8 }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                const initial = [introMessage(stylistName)];
+                persist(initial);
+                setMenuOpen(false);
+              }}
+            >
+              Clear Chat
+            </button>
+            <button type="button" className="secondary" onClick={() => router.push("/try-on")}>Open Try-On</button>
+          </div>
+        ) : null}
 
         <div
-          ref={chatListRef}
-          className="grid"
           style={{
-            maxHeight: "48vh",
-            minHeight: "42vh",
-            overflow: "auto",
-            marginBottom: 12,
-            padding: 10,
-            border: "1px solid #ead8c4",
-            borderRadius: 12,
-            background: "rgba(9,13,20,0.7)"
+            marginTop: 10,
+            border: "1px solid rgba(255,255,255,0.18)",
+            borderRadius: 16,
+            overflow: "hidden",
+            display: "grid",
+            gridTemplateRows: "1fr auto",
+            minHeight: 0,
+            background: "rgba(6,10,18,0.72)"
           }}
         >
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              style={{
-                alignSelf: m.role === "user" ? "end" : "start",
-                maxWidth: "85%",
-                background: m.role === "user" ? "linear-gradient(135deg,#86603a,#c7a06b)" : "rgba(255,255,255,0.08)",
-                color: m.role === "user" ? "#1b130d" : "#eef2fa",
-                borderRadius: 14,
-                padding: "10px 12px"
-              }}
-            >
-              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.content}</p>
-
-              {m.images?.length ? (
-                <div className="grid cols-2" style={{ marginTop: 8 }}>
-                  {m.images.map((img, idx) => (
-                    <img key={`${i}-${idx}`} src={img} alt="Uploaded for stylist review" style={{ width: "100%", borderRadius: 8 }} />
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ))}
-          {loading ? (
-            <div
-              style={{
-                alignSelf: "start",
-                maxWidth: "85%",
-                background: "rgba(255,255,255,0.08)",
-                borderRadius: 14,
-                padding: "10px 12px"
-              }}
-            >
-              <p className="small" style={{ margin: 0 }}>{stylistName} is typing...</p>
-            </div>
-          ) : null}
-        </div>
-
-        <form onSubmit={send} className="grid" style={{ borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button type="button" className="secondary" onClick={() => setAttachmentOpen((v) => !v)} title="Attach">
-              📎
-            </button>
-            <div className="small">
-              {pendingPersonImage ? "User photo attached" : "No user photo"} · Dress images: {pendingImages.length}
-            </div>
-          </div>
-          {attachmentOpen ? (
-            <div className="grid cols-2" style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: 10 }}>
-              <label>
-                Upload dress photo(s)
-                <input type="file" accept="image/*" multiple onChange={onImageAttach} />
-              </label>
-              <label>
-                Upload your photo
-                <input type="file" accept="image/*" onChange={onPersonImageAttach} />
-              </label>
-              <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
-                <button type="button" className="secondary" onClick={openTryOnFromChat}>
-                  Try-On
-                </button>
+          <div ref={chatListRef} style={{ overflow: "auto", padding: 12, display: "grid", gap: 10 }}>
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  justifySelf: m.role === "user" ? "end" : "start",
+                  maxWidth: "86%",
+                  background: m.role === "user" ? "linear-gradient(135deg,#86603a,#c7a06b)" : "rgba(255,255,255,0.08)",
+                  color: m.role === "user" ? "#1b130d" : "#eef2fa",
+                  borderRadius: 14,
+                  padding: "10px 12px"
+                }}
+              >
+                <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.content}</p>
+                {m.images?.length ? (
+                  <div className="grid cols-2" style={{ marginTop: 8 }}>
+                    {m.images.map((img, idx) => (
+                      <img key={`${i}-${idx}`} src={img} alt="Uploaded" style={{ width: "100%", borderRadius: 8 }} />
+                    ))}
+                  </div>
+                ) : null}
               </div>
+            ))}
+            {loading ? (
+              <div
+                style={{
+                  justifySelf: "start",
+                  maxWidth: "86%",
+                  background: "rgba(255,255,255,0.08)",
+                  borderRadius: 14,
+                  padding: "10px 12px"
+                }}
+              >
+                <p className="small" style={{ margin: 0 }}>{stylistName} is typing...</p>
+              </div>
+            ) : null}
+          </div>
+
+          <form onSubmit={send} style={{ borderTop: "1px solid rgba(255,255,255,0.16)", padding: 10 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={onAttachImages}
+              style={{ display: "none" }}
+            />
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button type="button" className="secondary" onClick={() => fileInputRef.current?.click()} title="Attach image">
+                📎
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={startVoiceInput}
+                disabled={listening || loading}
+                title="Record voice"
+              >
+                {listening ? "🎙️..." : "🎙️"}
+              </button>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!loading) e.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                placeholder={`Message ${stylistName}...`}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <button type="submit" disabled={loading}>Send</button>
             </div>
-          ) : null}
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (loading) return;
-                const form = e.currentTarget.form;
-                if (form) form.requestSubmit();
-              }
-            }}
-            rows={2}
-            placeholder={`Reply to ${stylistName}... (Press Enter to send)`}
-          />
-          <div className="small">Press `Enter` to send, `Shift + Enter` for new line.</div>
-        </form>
+            <div className="small" style={{ marginTop: 6 }}>
+              {pendingImages.length ? `${pendingImages.length} image(s) attached` : "No attachment"}
+              {mode === "talk" && talkStatus ? ` · ${talkStatus}` : ""}
+            </div>
+          </form>
+        </div>
       </article>
     </section>
   );
