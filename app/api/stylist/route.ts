@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
       occasion: body.occasion ?? "casual",
       closetCount: body.closet?.length ?? 0,
       closet: body.closet?.slice(0, 25) ?? [],
-      stylistName: body.stylistName || "Meera",
+      stylistName: body.stylistName || "MirrorMe",
       conversationMode: body.conversationMode || "chat",
       preferredLanguage: body.preferredLanguage || "auto",
       closetInsights: closetInsights(body.closet ?? []),

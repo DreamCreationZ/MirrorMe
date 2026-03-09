@@ -25,13 +25,6 @@ function introMessage(name: string): StylistMessage {
   };
 }
 
-function welcomeBackMessage(userName: string): StylistMessage {
-  return {
-    role: "assistant",
-    content: `Hey ${userName}, welcome back. How may I help you today?`
-  };
-}
-
 function speechText(input: string) {
   return input
     .replace(/\n+/g, ". ")
@@ -57,6 +50,8 @@ function detectRenameIntent(text: string) {
   const cleaned = text.trim();
   const patterns = [
     /(?:call yourself|your name is|i name you|i will call you|you are)\s+([a-zA-Z][a-zA-Z\s'-]{1,24})/i,
+    /(?:name\s+you|name\s+u)\s+as\s+([a-zA-Z][a-zA-Z\s'-]{1,24})/i,
+    /(?:call\s+you|call\s+u)\s+([a-zA-Z][a-zA-Z\s'-]{1,24})/i,
     /^name\s*:\s*([a-zA-Z][a-zA-Z\s'-]{1,24})$/i
   ];
   for (const pattern of patterns) {
@@ -73,7 +68,7 @@ export default function StylistPage() {
   const [closet, setCloset] = useState<ClosetItem[]>([]);
   const [occasion, setOccasion] = useState("casual");
 
-  const [stylistName, setStylistName] = useState("Meera");
+  const [stylistName, setStylistName] = useState("MirrorMe");
   const [mode, setMode] = useState<"chat" | "talk">("chat");
   const [messages, setMessages] = useState<StylistMessage[]>([]);
   const [input, setInput] = useState("");
@@ -107,11 +102,11 @@ export default function StylistPage() {
 
       const config = localStore.getStylistConfig(user.id);
       if (config) {
-        setStylistName(config.name || "Meera");
+        setStylistName(config.name || "MirrorMe");
         setMode(config.mode || "chat");
       } else {
         localStore.setStylistConfig(user.id, {
-          name: "Meera",
+          name: "MirrorMe",
           mode: "chat",
           preferredLanguage: "English",
           createdAt: Date.now()
@@ -120,24 +115,19 @@ export default function StylistPage() {
 
       const saved = localStore.getStylistMessages(user.id);
       const seenKey = `fashion_stylist_seen:${user.id}`;
-      const sessionWelcomeKey = `fashion_stylist_welcomed:${user.id}`;
       const seenBefore = typeof window !== "undefined" ? localStorage.getItem(seenKey) === "1" : false;
-      const sessionWelcomed = typeof window !== "undefined" ? sessionStorage.getItem(sessionWelcomeKey) === "1" : false;
 
       if (!saved.length && !seenBefore) {
-        const initial = [introMessage(config?.name || "Meera")];
+        const initial = [introMessage(config?.name || "MirrorMe")];
         setMessages(initial);
         localStore.setStylistMessages(user.id, initial);
         if (typeof window !== "undefined") localStorage.setItem(seenKey, "1");
         return;
       }
 
-      const base = saved.length ? saved : [introMessage(config?.name || "Meera")];
-      let next = base;
-      if (seenBefore && !sessionWelcomed) {
-        next = [...base, welcomeBackMessage(loadedProfile?.name || user.name || "there")];
-        if (typeof window !== "undefined") sessionStorage.setItem(sessionWelcomeKey, "1");
-      }
+      const base = saved.length ? saved : [introMessage(config?.name || "MirrorMe")];
+      // Do not inject welcome-back inside an active conversation thread.
+      const next = base;
 
       setMessages(next);
       localStore.setStylistMessages(user.id, next);
