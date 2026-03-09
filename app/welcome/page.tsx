@@ -298,22 +298,6 @@ export default function WelcomePage() {
                 </select>
               </label>
 
-              <label>
-                Session timeout
-                <select
-                  value={effectiveSettings.authTimeoutMinutes || 45}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      authTimeoutMinutes: Number(e.target.value) as 30 | 45
-                    }))
-                  }
-                >
-                  <option value={30}>30 minutes</option>
-                  <option value={45}>45 minutes</option>
-                </select>
-              </label>
-
               {effectiveSettings.authMethod === "passcode" ? (
                 <>
                   <label>
