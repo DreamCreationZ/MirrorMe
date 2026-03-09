@@ -665,6 +665,30 @@ button.secondary {
   animation: doorFadeIn 380ms ease;
 }
 
+.welcome-quote {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(228, 191, 131, 0.2), transparent 45%),
+    linear-gradient(180deg, rgba(23, 31, 44, 0.9), rgba(17, 24, 36, 0.92));
+  box-shadow: 0 0 26px rgba(228, 191, 131, 0.1);
+}
+
+.welcome-quote-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #f5ecdf;
+  animation: doorFadeIn 380ms ease;
+}
+
+.welcome-quote-author {
+  margin: 8px 0 0;
+  color: #d4c4aa;
+  font-size: 0.9rem;
+}
+
 @keyframes doorFadeIn {
   from {
     opacity: 0;

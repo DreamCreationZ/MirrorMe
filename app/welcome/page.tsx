@@ -38,6 +38,7 @@ export default function WelcomePage() {
   const [typed, setTyped] = useState("");
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [doorMessageIndex, setDoorMessageIndex] = useState(0);
+  const [quoteIndex, setQuoteIndex] = useState(0);
 
   const doorMessages = useMemo(() => {
     const name = profile?.name || "there";
@@ -46,6 +47,17 @@ export default function WelcomePage() {
       "I will be your personal assistant throughout your personal dressing room. Go to the occasion page to select your occasion. Once you select the occasion, the stylist page will open and I will be there with better suggestions for your day. Let's go."
     ];
   }, [profile?.name]);
+
+  const motivationQuotes = useMemo(
+    () => [
+      { text: "Take the stones people throw at you and use them to build a monument.", by: "Ratan Tata" },
+      { text: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action.", by: "A. P. J. Abdul Kalam" },
+      { text: "In the middle of difficulty lies opportunity.", by: "Albert Einstein" },
+      { text: "Style is a way to say who you are without speaking.", by: "Rachel Zoe" },
+      { text: "Your confidence is your best outfit. Wear it every day.", by: "MirrorMe" }
+    ],
+    []
+  );
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -90,6 +102,14 @@ export default function WelcomePage() {
     const timer = setTimeout(() => setDoorMessageIndex(1), 4300);
     return () => clearTimeout(timer);
   }, [authOk]);
+
+  useEffect(() => {
+    if (!authOk) return;
+    const timer = setInterval(() => {
+      setQuoteIndex((v) => (v + 1) % motivationQuotes.length);
+    }, 4200);
+    return () => clearInterval(timer);
+  }, [authOk, motivationQuotes.length]);
 
   async function authenticate() {
     if (settings.authMethod === "passcode" && passcode !== (settings.passcode || "1234")) {
@@ -172,6 +192,11 @@ export default function WelcomePage() {
                 <div className="room-content">
                   <p key={doorMessageIndex} className="door-message">{doorMessages[doorMessageIndex]}</p>
                 </div>
+              </div>
+
+              <div className="welcome-quote">
+                <p key={quoteIndex} className="welcome-quote-text">“{motivationQuotes[quoteIndex].text}”</p>
+                <p className="welcome-quote-author">- {motivationQuotes[quoteIndex].by}</p>
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
