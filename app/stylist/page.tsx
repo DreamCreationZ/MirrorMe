@@ -13,23 +13,6 @@ import {
   UserProfile
 } from "@/types/models";
 
-function introMessage(name: string): StylistMessage {
-  return {
-    role: "assistant",
-    content: `Hi, I am ${name}, your personal AI stylist. I can be brutally honest and practical. If you want to rename me, set any name you like and I will use it.`,
-    recommendation: {
-      verdict: "GOOD",
-      confidence: 78,
-      whyThisWorks: [
-        "I use your profile and occasion to personalize suggestions.",
-        "I explain clearly why an outfit works or fails."
-      ],
-      alternatives: ["Share one outfit idea and I will start styling."],
-      timeSavingTip: "Use Talk mode when you want quick voice interaction."
-    }
-  };
-}
-
 type SpeechRec = {
   lang: string;
   interimResults: boolean;
@@ -40,6 +23,20 @@ type SpeechRec = {
 };
 
 type SpeechRecCtor = new () => SpeechRec;
+
+function introMessage(name: string): StylistMessage {
+  return {
+    role: "assistant",
+    content: `Hey, I am your personal stylist ${name}. You can name me anything you like, and I will call myself by that name.`
+  };
+}
+
+function welcomeBackMessage(userName: string): StylistMessage {
+  return {
+    role: "assistant",
+    content: `Hey ${userName}, welcome back. How may I help you today?`
+  };
+}
 
 function speechText(input: string) {
   return input
@@ -53,18 +50,26 @@ function speechText(input: string) {
     .trim();
 }
 
-function pickPreferredVoice(
-  voices: SpeechSynthesisVoice[],
-  language: string,
-  femalePreferred: boolean
-): SpeechSynthesisVoice | undefined {
-  const langHint = language === "Hindi" ? "hi" : "en";
+function pickPreferredVoice(voices: SpeechSynthesisVoice[], femalePreferred: boolean): SpeechSynthesisVoice | undefined {
   const femaleHint = /(female|woman|samantha|veena|zira|karen|moira|tessa|ava|serena|victoria|allison|google uk english female|aria|siri)/i;
-  const femaleLang = voices.find((v) => v.lang.toLowerCase().startsWith(langHint) && femaleHint.test(v.name.toLowerCase()));
+  const femaleEn = voices.find((v) => v.lang.toLowerCase().startsWith("en") && femaleHint.test(v.name.toLowerCase()));
   const femaleAny = voices.find((v) => femaleHint.test(v.name.toLowerCase()));
-  const langAny = voices.find((v) => v.lang.toLowerCase().startsWith(langHint));
-  if (femalePreferred) return femaleLang || femaleAny || langAny || voices[0];
-  return langAny || voices[0];
+  const english = voices.find((v) => v.lang.toLowerCase().startsWith("en"));
+  if (femalePreferred) return femaleEn || femaleAny || english || voices[0];
+  return english || voices[0];
+}
+
+function detectRenameIntent(text: string) {
+  const cleaned = text.trim();
+  const patterns = [
+    /(?:call yourself|your name is|i name you|i will call you|you are)\s+([a-zA-Z][a-zA-Z\s'-]{1,24})/i,
+    /^name\s*:\s*([a-zA-Z][a-zA-Z\s'-]{1,24})$/i
+  ];
+  for (const pattern of patterns) {
+    const hit = cleaned.match(pattern);
+    if (hit?.[1]) return hit[1].trim();
+  }
+  return "";
 }
 
 export default function StylistPage() {
@@ -75,32 +80,38 @@ export default function StylistPage() {
   const [occasion, setOccasion] = useState("casual");
 
   const [stylistName, setStylistName] = useState("Meera");
-  const [renameInput, setRenameInput] = useState("Meera");
   const [mode, setMode] = useState<"chat" | "talk">("chat");
-  const [preferredLanguage, setPreferredLanguage] = useState("auto");
   const [listening, setListening] = useState(false);
+  const [talkStatus, setTalkStatus] = useState("");
 
-  const [messages, setMessages] = useState<StylistMessage[]>([introMessage("Meera")]);
-
+  const [messages, setMessages] = useState<StylistMessage[]>([]);
   const [input, setInput] = useState("");
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [pendingPersonImage, setPendingPersonImage] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [handsFreeTalk, setHandsFreeTalk] = useState(true);
-  const [talkStatus, setTalkStatus] = useState("");
-  const [voiceReady, setVoiceReady] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceUri, setSelectedVoiceUri] = useState("");
 
-  const recognizerRef = useRef<SpeechRec | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
-  const modeRef = useRef(mode);
-  const handsFreeRef = useRef(handsFreeTalk);
-  const loadingRef = useRef(loading);
-  const listeningRef = useRef(listening);
-  const speakingRef = useRef(false);
-  const recognizerRunningRef = useRef(false);
+  const recognizerRef = useRef<SpeechRec | null>(null);
+  const modeRef = useRef<"chat" | "talk">("chat");
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "talk") {
+      if (recognizerRef.current) {
+        recognizerRef.current.stop();
+        recognizerRef.current = null;
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setListening(false);
+      setTalkStatus("");
+    }
+  }, [mode]);
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -110,92 +121,55 @@ export default function StylistPage() {
       }
 
       setUserId(user.id);
-      setProfile(await loadProfile(user.id));
+      const loadedProfile = await loadProfile(user.id);
+      setProfile(loadedProfile);
       setCloset(await loadCloset(user.id));
       setOccasion(localStore.getOccasion(user.id) || "casual");
 
       const config = localStore.getStylistConfig(user.id);
       if (config) {
-        setStylistName(config.name);
-        setRenameInput(config.name);
-        setMode("chat");
-        setPreferredLanguage(config.preferredLanguage || "auto");
+        setStylistName(config.name || "Meera");
+        setMode(config.mode || "chat");
       } else {
-        const firstConfig: StylistConfig = { name: "Meera", mode: "chat", preferredLanguage: "auto", createdAt: Date.now() };
+        const firstConfig: StylistConfig = {
+          name: "Meera",
+          mode: "chat",
+          preferredLanguage: "English",
+          createdAt: Date.now()
+        };
         localStore.setStylistConfig(user.id, firstConfig);
       }
 
       const saved = localStore.getStylistMessages(user.id);
-      if (saved.length) {
-        setMessages(saved);
-      } else {
+      const seenKey = `fashion_stylist_seen:${user.id}`;
+      const sessionWelcomeKey = `fashion_stylist_welcomed:${user.id}`;
+      const seenBefore = typeof window !== "undefined" ? localStorage.getItem(seenKey) === "1" : false;
+      const sessionWelcomed = typeof window !== "undefined" ? sessionStorage.getItem(sessionWelcomeKey) === "1" : false;
+
+      if (!saved.length && !seenBefore) {
         const initial = [introMessage(config?.name || "Meera")];
         setMessages(initial);
         localStore.setStylistMessages(user.id, initial);
+        if (typeof window !== "undefined") localStorage.setItem(seenKey, "1");
+        return;
       }
+
+      const base = saved.length ? saved : [introMessage(config?.name || "Meera")];
+      let next = base;
+      if (seenBefore && !sessionWelcomed) {
+        const welcome = welcomeBackMessage(loadedProfile?.name || user.name || "there");
+        next = [...base, welcome];
+        if (typeof window !== "undefined") sessionStorage.setItem(sessionWelcomeKey, "1");
+      }
+      setMessages(next);
+      localStore.setStylistMessages(user.id, next);
+      if (typeof window !== "undefined") localStorage.setItem(seenKey, "1");
     });
   }, [router]);
 
   useEffect(() => {
-    if (mode !== "talk") {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-      if (recognizerRef.current) {
-        recognizerRef.current.stop();
-        recognizerRef.current = null;
-      }
-      setListening(false);
-      setTalkStatus("");
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode === "talk" && handsFreeTalk && !loadingRef.current && !listeningRef.current) {
-      const timer = setTimeout(() => startVoiceInput(), 300);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [handsFreeTalk, mode]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    setVoiceReady(true);
-  }, [mode]);
-
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
-
-  useEffect(() => {
-    handsFreeRef.current = handsFreeTalk;
-  }, [handsFreeTalk]);
-
-  useEffect(() => {
-    loadingRef.current = loading;
-  }, [loading]);
-
-  useEffect(() => {
-    listeningRef.current = listening;
-  }, [listening]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    const synth = window.speechSynthesis;
-    const loadVoices = () => {
-      const voices = synth.getVoices();
-      if (voices.length) setAvailableVoices(voices);
-    };
-    loadVoices();
-    synth.addEventListener("voiceschanged", loadVoices);
-    return () => synth.removeEventListener("voiceschanged", loadVoices);
-  }, []);
-
-  useEffect(() => {
-    if (!availableVoices.length || selectedVoiceUri) return;
-    const picked = pickPreferredVoice(availableVoices, preferredLanguage, true);
-    if (picked) setSelectedVoiceUri(picked.voiceURI);
-  }, [availableVoices, preferredLanguage, selectedVoiceUri]);
+    chatListRef.current?.scrollTo({ top: chatListRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, loading]);
 
   function persist(next: StylistMessage[]) {
     setMessages(next);
@@ -208,49 +182,23 @@ export default function StylistPage() {
   }
 
   function speak(text: string) {
+    if (modeRef.current !== "talk") return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    if (!voiceReady) {
-      setVoiceReady(true);
-      return;
-    }
-
-    if (recognizerRef.current) {
-      recognizerRef.current.stop();
-      recognizerRef.current = null;
-      recognizerRunningRef.current = false;
-      setListening(false);
-    }
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(speechText(text));
-    const voices = availableVoices.length ? availableVoices : window.speechSynthesis.getVoices();
-    const stylistLower = stylistName.toLowerCase();
-    const profileLower = (profile?.name || "").toLowerCase();
-    const wantsFemale =
-      /(meera|sera|sara|riya|priya|anita|swati)/i.test(stylistLower) ||
-      /(swati|priya|riya|anita)/i.test(profileLower);
-    const selectedVoice = selectedVoiceUri ? voices.find((v) => v.voiceURI === selectedVoiceUri) : null;
-    const pickedVoice = selectedVoice || pickPreferredVoice(voices, preferredLanguage, wantsFemale);
-    if (pickedVoice) {
-      utterance.voice = pickedVoice;
-      utterance.lang = pickedVoice.lang;
+    const voices = window.speechSynthesis.getVoices();
+    const wantsFemale = /(meera|sera|sara|riya|priya|anita|swati)/i.test(stylistName + " " + (profile?.name || ""));
+    const picked = pickPreferredVoice(voices, wantsFemale);
+    if (picked) {
+      utterance.voice = picked;
+      utterance.lang = picked.lang;
     }
-    utterance.rate = preferredLanguage === "Hindi" ? 0.92 : 0.94;
-    utterance.pitch = wantsFemale ? 1.18 : 1.0;
+    utterance.rate = 0.95;
+    utterance.pitch = wantsFemale ? 1.15 : 1.0;
     utterance.volume = 1;
-    utterance.onstart = () => {
-      speakingRef.current = true;
-      if (mode === "talk") setTalkStatus("Speaking...");
-    };
-    utterance.onerror = () => {
-      if (mode === "talk") setTalkStatus("Speech output failed. Click Enable Voice and try again.");
-    };
-    utterance.onend = () => {
-      speakingRef.current = false;
-      if (modeRef.current === "talk" && handsFreeRef.current && !loadingRef.current && !listeningRef.current) {
-        startVoiceInput();
-      }
-    };
+    utterance.onstart = () => setTalkStatus("Speaking...");
+    utterance.onend = () => setTalkStatus("Tap Listening to continue.");
     window.speechSynthesis.speak(utterance);
   }
 
@@ -266,7 +214,6 @@ export default function StylistPage() {
   async function onImageAttach(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-
     const images = await Promise.all(files.map((f) => fileToDataUrl(f)));
     setPendingImages((prev) => [...prev, ...images].slice(0, 6));
   }
@@ -287,55 +234,9 @@ export default function StylistPage() {
     router.push("/try-on");
   }
 
-  function saveStylistName() {
-    const name = renameInput.trim();
-    if (!name) return;
-    setStylistName(name);
-    persistConfig({ name, mode, preferredLanguage, createdAt: Date.now() });
-
-    const note: StylistMessage = {
-      role: "assistant",
-      content: `Done. You can call me ${name}. I will introduce myself as ${name} from now.`
-    };
-    persist([...messages, note]);
-    if (modeRef.current === "talk") speak(note.content);
-  }
-
-  function setConversationMode(nextMode: "chat" | "talk") {
-    setMode(nextMode);
-    persistConfig({ name: stylistName, mode: nextMode, preferredLanguage, createdAt: Date.now() });
-    if (nextMode === "talk") {
-      enableVoice();
-      setTalkStatus(`Talk mode on. Say "${stylistName}" and then your request.`);
-      speak(`Talk mode is on. Say ${stylistName} and then your request.`);
-    } else {
-      setTalkStatus("");
-    }
-  }
-
-  function setLanguage(nextLanguage: string) {
-    setPreferredLanguage(nextLanguage);
-    persistConfig({ name: stylistName, mode, preferredLanguage: nextLanguage, createdAt: Date.now() });
-  }
-
-  function enableVoice() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setTalkStatus("Speech output is not supported in this browser.");
-      return;
-    }
-    try {
-      window.speechSynthesis.cancel();
-      setVoiceReady(true);
-      setTalkStatus("Voice enabled.");
-    } catch {
-      setVoiceReady(false);
-      setTalkStatus("Could not enable voice output.");
-    }
-  }
-
   function startVoiceInput() {
     if (typeof window === "undefined") return;
-    if (loadingRef.current || listeningRef.current || speakingRef.current || recognizerRunningRef.current) return;
+    if (loading || listening) return;
 
     const speechWindow = window as unknown as {
       SpeechRecognition?: SpeechRecCtor;
@@ -344,14 +245,13 @@ export default function StylistPage() {
 
     const Ctor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!Ctor) {
-      alert("Voice input is not supported in this browser.");
+      setTalkStatus("Voice input is not supported in this browser.");
       return;
     }
 
     const rec = new Ctor();
     recognizerRef.current = rec;
-    recognizerRunningRef.current = true;
-    rec.lang = preferredLanguage === "Hindi" ? "hi-IN" : preferredLanguage === "English" ? "en-US" : "en-IN";
+    rec.lang = "en-IN";
     rec.interimResults = false;
     setListening(true);
     setTalkStatus("Listening...");
@@ -359,54 +259,20 @@ export default function StylistPage() {
     rec.onresult = (event: unknown) => {
       const ev = event as { results?: ArrayLike<ArrayLike<{ transcript: string }>> };
       const text = ev.results?.[0]?.[0]?.transcript?.trim() || "";
-      recognizerRunningRef.current = false;
       setListening(false);
       rec.stop();
       if (text) {
-        const heard = text.trim();
-        const normalized = heard.toLowerCase().replace(/[.,!?;:]+/g, " ").replace(/\s+/g, " ").trim();
-        const name = stylistName.trim().toLowerCase();
-        const parts = normalized.split(" ").filter(Boolean);
-        const hasWake =
-          parts[0] === name ||
-          ((parts[0] === "hey" || parts[0] === "hi" || parts[0] === "ok") && parts[1] === name);
-
-        // Strict wake-word mode: ignore everything unless it starts with stylist name.
-        if (!hasWake) {
-          setTalkStatus(`Listening for "${stylistName}"...`);
-          if (modeRef.current === "talk" && handsFreeRef.current) {
-            setTimeout(() => startVoiceInput(), 250);
-          }
-          return;
-        }
-
-        const stripped =
-          parts[0] === name
-            ? parts.slice(1).join(" ").trim()
-            : parts.slice(2).join(" ").trim();
-        if (!stripped) {
-          setTalkStatus("Yes? I am listening.");
-          speak("Yes? Tell me how I can style you.");
-          return;
-        }
-
-        setInput(stripped);
-        setTalkStatus(`Heard: ${stripped}`);
-        void sendMessage(stripped);
-      } else if (modeRef.current === "talk" && handsFreeRef.current) {
-        setTalkStatus("Could not hear clearly. Listening again...");
-        setTimeout(() => startVoiceInput(), 300);
+        setInput(text);
+        void sendMessage(text);
+      } else {
+        setTalkStatus("Could not hear clearly. Tap Listening again.");
       }
     };
 
     rec.onerror = () => {
-      recognizerRunningRef.current = false;
       setListening(false);
       rec.stop();
-      setTalkStatus("Mic error. Trying again...");
-      if (modeRef.current === "talk" && handsFreeRef.current) {
-        setTimeout(() => startVoiceInput(), 900);
-      }
+      setTalkStatus("Mic error. Tap Listening and try again.");
     };
 
     rec.start();
@@ -415,6 +281,24 @@ export default function StylistPage() {
   async function sendMessage(overrideText?: string) {
     const messageText = (overrideText ?? input).trim();
     if ((!messageText && !pendingImages.length) || loading) return;
+
+    const renameTo = detectRenameIntent(messageText);
+    if (renameTo) {
+      const renamed = renameTo.replace(/\s+/g, " ").trim();
+      setStylistName(renamed);
+      persistConfig({ name: renamed, mode: modeRef.current, preferredLanguage: "English", createdAt: Date.now() });
+
+      const userMessage: StylistMessage = { role: "user", content: messageText };
+      const assistantMessage: StylistMessage = {
+        role: "assistant",
+        content: `Done. I will call myself ${renamed} from now.`
+      };
+      const next = [...messages, userMessage, assistantMessage];
+      persist(next);
+      setInput("");
+      if (modeRef.current === "talk") speak(assistantMessage.content);
+      return;
+    }
 
     const images = pendingPersonImage ? [pendingPersonImage, ...pendingImages] : pendingImages;
     const userMessage: StylistMessage = {
@@ -427,7 +311,7 @@ export default function StylistPage() {
     persist(next);
     setInput("");
     setLoading(true);
-    setTalkStatus("Thinking...");
+    setTalkStatus(modeRef.current === "talk" ? "Thinking..." : "");
 
     try {
       const res = await fetch("/api/stylist", {
@@ -440,7 +324,7 @@ export default function StylistPage() {
           occasion,
           stylistName,
           conversationMode: modeRef.current,
-          preferredLanguage
+          preferredLanguage: "English"
         })
       });
 
@@ -464,23 +348,13 @@ export default function StylistPage() {
       persist(withReply);
       setPendingImages([]);
       setPendingPersonImage("");
-      if (modeRef.current === "talk") {
-        speak(assistant.content);
-      }
-      setTalkStatus(modeRef.current === "talk" ? "Reply ready." : "");
-      return assistant.content;
+      if (modeRef.current === "talk") speak(assistant.content);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Stylist is temporarily unavailable.";
-      const failMessage: StylistMessage = {
-        role: "assistant",
-        content: message
-      };
+      const failMessage: StylistMessage = { role: "assistant", content: message };
       persist([...next, failMessage]);
-      if (modeRef.current === "talk") {
-        speak(failMessage.content);
-      }
-      setTalkStatus(`Error: ${message}`);
-      return failMessage.content;
+      if (modeRef.current === "talk") speak(failMessage.content);
+      setTalkStatus(modeRef.current === "talk" ? `Error: ${message}` : "");
     } finally {
       setLoading(false);
     }
@@ -491,72 +365,33 @@ export default function StylistPage() {
     await sendMessage();
   }
 
-  useEffect(() => {
-    chatListRef.current?.scrollTo({ top: chatListRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
-
-  function clearConversation() {
-    const reset = [introMessage(stylistName)];
-    persist(reset);
-  }
-
   return (
     <section className="grid phone-grid">
       <article className="card phone-card">
         <h2>{stylistName}</h2>
         <p className="small">Occasion: <strong>{occasion || "casual"}</strong></p>
+
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <button type="button" className={mode === "chat" ? "" : "secondary"} onClick={() => setConversationMode("chat")}>
+          <button type="button" className={mode === "chat" ? "" : "secondary"} onClick={() => setMode("chat")}>
             Chat
           </button>
-          <button type="button" className={mode === "talk" ? "" : "secondary"} onClick={() => setConversationMode("talk")}>
+          <button
+            type="button"
+            className={mode === "talk" ? "" : "secondary"}
+            onClick={() => {
+              setMode("talk");
+              setTalkStatus(`Talk mode on. Tap Listening and speak naturally.`);
+            }}
+          >
             Talk
           </button>
           {mode === "talk" ? (
-            <>
-              <button type="button" className="secondary" onClick={startVoiceInput} disabled={listening}>
-                {listening ? "Listening..." : "Speak"}
-              </button>
-              <button type="button" className="secondary" onClick={() => setHandsFreeTalk((v) => !v)}>
-                {handsFreeTalk ? "Hands-free On" : "Hands-free Off"}
-              </button>
-              <button type="button" className="secondary" onClick={enableVoice}>
-                Enable Voice
-              </button>
-            </>
+            <button type="button" className="secondary" onClick={startVoiceInput} disabled={listening || loading}>
+              {listening ? "Listening..." : "Listening"}
+            </button>
           ) : null}
         </div>
-        <div className="grid cols-2" style={{ marginBottom: 8 }}>
-          <label>
-            Stylist name
-            <input value={renameInput} onChange={(e) => setRenameInput(e.target.value)} placeholder="Meera, Sera..." />
-          </label>
-          <label>
-            Language
-            <select value={preferredLanguage} onChange={(e) => setLanguage(e.target.value)}>
-              <option value="auto">Auto</option>
-              <option value="English">English</option>
-              <option value="Hindi">Hindi</option>
-              <option value="Marathi">Marathi</option>
-              <option value="Tamil">Tamil</option>
-              <option value="Telugu">Telugu</option>
-              <option value="Bengali">Bengali</option>
-              <option value="Gujarati">Gujarati</option>
-            </select>
-          </label>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <button type="button" className="secondary" onClick={saveStylistName}>Save Name</button>
-          {mode === "talk" && availableVoices.length ? (
-            <select value={selectedVoiceUri} onChange={(e) => setSelectedVoiceUri(e.target.value)}>
-              <option value="">Auto voice</option>
-              {availableVoices.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
-              ))}
-            </select>
-          ) : null}
-        </div>
-        {mode === "talk" ? <p className="small">Say &quot;{stylistName}&quot; then your request.</p> : null}
+
         {mode === "talk" && talkStatus ? <p className="small">{talkStatus}</p> : null}
 
         <div
@@ -606,9 +441,7 @@ export default function StylistPage() {
                 padding: "10px 12px"
               }}
             >
-              <p className="small" style={{ margin: 0 }}>
-                {stylistName} is typing...
-              </p>
+              <p className="small" style={{ margin: 0 }}>{stylistName} is typing...</p>
             </div>
           ) : null}
         </div>
@@ -647,9 +480,7 @@ export default function StylistPage() {
                 e.preventDefault();
                 if (loading) return;
                 const form = e.currentTarget.form;
-                if (form) {
-                  form.requestSubmit();
-                }
+                if (form) form.requestSubmit();
               }
             }}
             rows={2}
