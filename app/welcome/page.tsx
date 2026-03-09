@@ -40,6 +40,7 @@ export default function WelcomePage() {
   const [typed, setTyped] = useState("");
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
+  const [quoteStartIndex, setQuoteStartIndex] = useState(0);
 
   const motivationQuotes = useMemo(
     () => [
@@ -54,12 +55,13 @@ export default function WelcomePage() {
 
   const roomMessages = useMemo(() => {
     const name = profile?.name || "there";
+    const orderedQuotes = motivationQuotes.map((_, idx) => motivationQuotes[(quoteStartIndex + idx) % motivationQuotes.length]);
     return [
       `Hey ${name}, welcome to your personal dressing room.`,
       "I will be your personal assistant throughout your personal dressing room. Go to the occasion page to select your occasion. Once you select the occasion, the stylist page will open and I will be there with better suggestions for your day. Let's go.",
-      ...motivationQuotes.map((q) => `“${q.text}” - ${q.by}`)
+      ...orderedQuotes.map((q) => `“${q.text}” - ${q.by}`)
     ];
-  }, [motivationQuotes, profile?.name]);
+  }, [motivationQuotes, profile?.name, quoteStartIndex]);
 
   const authCacheKey = useMemo(() => (userId ? `fashion_welcome_auth_at:${userId}` : ""), [userId]);
 
@@ -80,6 +82,15 @@ export default function WelcomePage() {
       setProfile(loadedProfile);
       const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
       setSettings(loadedSettings);
+      if (typeof window !== "undefined") {
+        const quoteKey = `fashion_welcome_quote_seed:${user.id}`;
+        const prevSeed = Number(localStorage.getItem(quoteKey) || "0");
+        const nextSeed = Number.isFinite(prevSeed)
+          ? (prevSeed + 1) % motivationQuotes.length
+          : 0;
+        localStorage.setItem(quoteKey, String(nextSeed));
+        setQuoteStartIndex(nextSeed);
+      }
       const raw = typeof window !== "undefined" ? localStorage.getItem(`fashion_welcome_auth_at:${user.id}`) : null;
       const lastAuth = raw ? Number(raw) : 0;
       if (lastAuth && Date.now() - lastAuth < WELCOME_AUTH_TTL_MS) {

@@ -112,7 +112,19 @@ export default function StylistPage() {
       const loadedProfile = await loadProfile(user.id);
       setProfile(loadedProfile);
       setCloset(await loadCloset(user.id));
-      setOccasion(localStore.getOccasion(user.id) || "casual");
+      const params =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search)
+          : new URLSearchParams();
+      const queryOccasion = params.get("occasion");
+      const fromOccasion = params.get("from") === "occasion";
+      if (fromOccasion && queryOccasion) {
+        setOccasion(queryOccasion);
+        localStore.setOccasion(user.id, queryOccasion);
+        localStore.setStylistOccasionHandoff(user.id, queryOccasion);
+      } else {
+        setOccasion(localStore.getOccasion(user.id) || "casual");
+      }
 
       const config = localStore.getStylistConfig(user.id);
       if (config) {

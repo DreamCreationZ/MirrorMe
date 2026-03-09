@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { waitForAuthInit } from "@/lib/auth";
+import { getCurrentUser, waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
 import { loadProfile } from "@/lib/persistence";
 import { Occasion } from "@/types/models";
@@ -40,10 +40,11 @@ export default function OccasionPage() {
   }, [router]);
 
   function continueToStylist() {
-    if (!userId) return;
-    localStore.setOccasion(userId, occasion);
-    localStore.setStylistOccasionHandoff(userId, occasion);
-    router.push("/stylist");
+    const resolvedUserId = userId || getCurrentUser()?.id || "";
+    if (!resolvedUserId) return;
+    localStore.setOccasion(resolvedUserId, occasion);
+    localStore.setStylistOccasionHandoff(resolvedUserId, occasion);
+    router.push(`/stylist?from=occasion&occasion=${encodeURIComponent(occasion)}`);
   }
 
   return (
