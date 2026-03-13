@@ -7,6 +7,8 @@ import { localStore } from "@/lib/localStore";
 import { loadCloset, loadProfile } from "@/lib/persistence";
 import { ClosetItem, StylistConfig, StylistMessage, StylistRecommendation, UserProfile } from "@/types/models";
 
+const APP_NAME = "MirrorMe";
+
 type SpeechRec = {
   lang: string;
   interimResults: boolean;
@@ -24,7 +26,7 @@ type SpeechRecCtor = new () => SpeechRec;
 function introMessage(name: string): StylistMessage {
   return {
     role: "assistant",
-    content: `Hey, I am your personal stylist ${name}. You can name me and I will call myself by that name.`
+    content: `Hey, I am ${APP_NAME}, your personal stylist. Current chat nickname is ${name || APP_NAME}. You can give me a nickname and I will use it while chatting.`
   };
 }
 
@@ -38,8 +40,25 @@ function occasionGreeting(userName: string, occ: string): StylistMessage {
 function directWelcome(userName: string): StylistMessage {
   return {
     role: "assistant",
-    content: `Hey ${userName}, welcome back. How may I style you today?`
+    content: `Hey ${userName}, welcome back. I am ${APP_NAME}. How may I style you today?`
   };
+}
+
+function localFallbackReply(userName: string, occ: string, text: string) {
+  const t = text.toLowerCase();
+  if (t.includes("hi") || t.includes("hello")) {
+    return `Hey ${userName}, I am ${APP_NAME}. For your ${occ} plan, I can suggest a full look right now.`;
+  }
+  if (t.includes("casual") || t.includes("outing") || t.includes("day")) {
+    return "Go with a clean fitted top, straight jeans or trousers, low-contrast shoes, and one subtle accessory. This will look practical and confident.";
+  }
+  if (t.includes("party")) {
+    return "Use one statement piece and keep the rest clean. Too many loud elements together will reduce the overall look.";
+  }
+  if (t.includes("makeup")) {
+    return "Keep base natural, define eyes, and use a lip shade slightly deeper than your natural tone for a polished look.";
+  }
+  return "Tell me your occasion and what pieces you have in mind. I will give you honest, practical styling advice.";
 }
 
 function speechText(input: string) {
@@ -86,7 +105,7 @@ export default function StylistPage() {
   const [closet, setCloset] = useState<ClosetItem[]>([]);
   const [occasion, setOccasion] = useState("casual");
 
-  const [stylistName, setStylistName] = useState("MirrorMe");
+  const [stylistName, setStylistName] = useState(APP_NAME);
   const [mode, setMode] = useState<"chat" | "talk">("chat");
   const [messages, setMessages] = useState<StylistMessage[]>([]);
   const [input, setInput] = useState("");
@@ -148,6 +167,7 @@ export default function StylistPage() {
       const seenBefore = typeof window !== "undefined" ? localStorage.getItem(seenKey) === "1" : false;
       const directWelcomeShown = typeof window !== "undefined" ? sessionStorage.getItem(directWelcomeKey) === "1" : false;
       const handoffOccasion = localStore.getStylistOccasionHandoff(user.id);
+      const occasionFromEntry = fromOccasion && queryOccasion ? queryOccasion : handoffOccasion;
       const userName = loadedProfile?.name || user.name || "there";
 
       if (!saved.length && !seenBefore) {
@@ -162,8 +182,8 @@ export default function StylistPage() {
       let next = base;
 
       // Occasion-selected flow: always greet once with chosen occasion and then clear handoff.
-      if (handoffOccasion) {
-        next = [...base, occasionGreeting(userName, handoffOccasion)];
+      if (occasionFromEntry) {
+        next = [...base, occasionGreeting(userName, occasionFromEntry)];
         localStore.clearStylistOccasionHandoff(user.id);
       } else if (!directWelcomeShown) {
         // Direct open of stylist page: one welcome-back per tab session.
@@ -326,7 +346,7 @@ export default function StylistPage() {
       persistConfig({ name: renamed, mode: modeRef.current, preferredLanguage: "English", createdAt: Date.now() });
 
       const userMessage: StylistMessage = { role: "user", content: messageText };
-      const assistantMessage: StylistMessage = { role: "assistant", content: `Done. I will call myself ${renamed} from now.` };
+      const assistantMessage: StylistMessage = { role: "assistant", content: `Done. You can call me ${renamed} in this chat. ${APP_NAME} remains your stylist app.` };
       const next = [...messages, userMessage, assistantMessage];
       persist(next);
       setInput("");
@@ -366,19 +386,21 @@ export default function StylistPage() {
 
       const assistant: StylistMessage = {
         role: "assistant",
-        content: data.reply ?? data.error ?? "Stylist is temporarily unavailable.",
+        content: data.reply ?? localFallbackReply(profile?.name || "there", occasion, messageText),
         recommendation: data.recommendation
       };
 
       persist([...next, assistant]);
       setPendingImages([]);
       if (modeRef.current === "talk") speak(assistant.content);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Stylist is temporarily unavailable.";
-      const failMessage: StylistMessage = { role: "assistant", content: message };
+    } catch {
+      const failMessage: StylistMessage = {
+        role: "assistant",
+        content: localFallbackReply(profile?.name || "there", occasion, messageText)
+      };
       persist([...next, failMessage]);
       if (modeRef.current === "talk") speak(failMessage.content);
-      setTalkStatus(modeRef.current === "talk" ? `Error: ${message}` : "");
+      setTalkStatus(modeRef.current === "talk" ? "Ready. Tap mic to continue." : "");
     } finally {
       setLoading(false);
     }
@@ -391,9 +413,9 @@ export default function StylistPage() {
 
   return (
     <section className="grid phone-grid">
-      <article className="card phone-card" style={{ height: "calc(100vh - 170px)", display: "grid", gridTemplateRows: "auto 1fr" }}>
+      <article className="card phone-card" style={{ height: "calc(100vh - 190px)", display: "grid", gridTemplateRows: "auto 1fr" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <h2 style={{ margin: 0 }}>{stylistName}</h2>
+          <h2 style={{ margin: 0 }}>{APP_NAME}</h2>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button type="button" className={mode === "chat" ? "" : "secondary"} onClick={() => setMode("chat")}>Chat</button>
             <button
@@ -421,20 +443,22 @@ export default function StylistPage() {
             background: "rgba(6,10,18,0.72)"
           }}
         >
-          <div ref={chatListRef} style={{ overflow: "auto", padding: 12, display: "grid", gap: 10 }}>
+          <div ref={chatListRef} style={{ overflow: "auto", padding: 10, display: "grid", gap: 8, alignContent: "start" }}>
             {messages.map((m, i) => (
               <div
                 key={i}
                 style={{
                   justifySelf: m.role === "user" ? "end" : "start",
-                  maxWidth: "86%",
+                  alignSelf: "start",
+                  width: "fit-content",
+                  maxWidth: "72%",
                   background: m.role === "user" ? "linear-gradient(135deg,var(--brand),var(--brand-2))" : "rgba(255,255,255,0.08)",
                   color: m.role === "user" ? "#1b130d" : "#eef2fa",
                   borderRadius: 14,
-                  padding: "10px 12px"
+                  padding: "8px 10px"
                 }}
               >
-                <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.content}</p>
+                <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.4 }}>{m.content}</p>
                 {m.images?.length ? (
                   <div className="grid cols-2" style={{ marginTop: 8 }}>
                     {m.images.map((img, idx) => (
@@ -448,13 +472,13 @@ export default function StylistPage() {
               <div
                 style={{
                   justifySelf: "start",
-                  maxWidth: "86%",
+                  maxWidth: "72%",
                   background: "rgba(255,255,255,0.08)",
                   borderRadius: 14,
-                  padding: "10px 12px"
+                  padding: "8px 10px"
                 }}
               >
-                <p className="small" style={{ margin: 0 }}>{stylistName} is typing...</p>
+                <p className="small" style={{ margin: 0 }}>{APP_NAME} is typing...</p>
               </div>
             ) : null}
           </div>
@@ -490,7 +514,7 @@ export default function StylistPage() {
                     if (!loading) e.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder={`Message ${stylistName}...`}
+                placeholder={`Message ${APP_NAME}...`}
                 style={{ flex: 1, minWidth: 0 }}
               />
               <button type="submit" disabled={loading}>Send</button>
