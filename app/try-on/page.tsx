@@ -1,9 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
 import { loadProfile } from "@/lib/persistence";
+import {
+  TRYON_PACK_CREDITS,
+  TRYON_PACK_PRICE_USD,
+  addTryOnPack,
+  consumeTryOnCredits,
+  hasActiveSubscription,
+  loadBilling
+} from "@/lib/subscription";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -18,6 +28,7 @@ type TryOnJob = {
 type GarmentType = "auto" | "upper_body" | "lower_body" | "dresses";
 
 export default function TryOnPage() {
+  const router = useRouter();
   const [userId, setUserId] = useState("");
   const [personImageUrl, setPersonImageUrl] = useState("");
   const [garmentImageUrl, setGarmentImageUrl] = useState("");
@@ -27,6 +38,8 @@ export default function TryOnPage() {
   const [resultUrl, setResultUrl] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [subscriptionActive, setSubscriptionActive] = useState(false);
   const [tryCredits, setTryCredits] = useState(0);
   const [extraGarmentUrls, setExtraGarmentUrls] = useState("");
   const [presetGarments, setPresetGarments] = useState<string[]>([]);
@@ -36,11 +49,21 @@ export default function TryOnPage() {
   const garmentImage = useMemo(() => garmentPreview || garmentImageUrl, [garmentPreview, garmentImageUrl]);
 
   useEffect(() => {
+    let mounted = true;
     waitForAuthInit().then(async (user) => {
-      if (!user) return;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      const billing = await loadBilling(user.id);
+      if (!hasActiveSubscription(billing)) {
+        router.replace("/subscribe");
+        return;
+      }
+      if (!mounted) return;
       setUserId(user.id);
-      const key = `fashion_tryon_credits:${user.id}`;
-      setTryCredits(Number(localStorage.getItem(key) || "0"));
+      setSubscriptionActive(true);
+      setTryCredits(billing.tryOnCredits);
       const profile = await loadProfile(user.id);
       if (profile?.frontImageUrl) {
         setPersonImageUrl(profile.frontImageUrl);
@@ -48,16 +71,19 @@ export default function TryOnPage() {
       }
       const preset = localStore.getTryOnPreset(user.id);
       if (!preset) return;
-      if (preset.personImage && !profile?.frontImageUrl && !personImageUrl) setPersonImageUrl(preset.personImage);
+      if (preset.personImage && !profile?.frontImageUrl) setPersonImageUrl(preset.personImage);
       if (preset.garmentImages.length) {
         setGarmentImageUrl(preset.garmentImages[0]);
         setPresetGarments(preset.garmentImages.slice(1));
       }
       localStore.clearTryOnPreset(user.id);
     });
-  }, [personImageUrl]);
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
-  async function compressImage(file: File, maxSide = 1024, quality = 0.75): Promise<File> {
+  async function compressImage(file: File, maxSide = 896, quality = 0.72): Promise<File> {
     const dataUrl = await fileToDataUrl(file);
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const el = new Image();
@@ -121,7 +147,7 @@ export default function TryOnPage() {
   }
 
   async function pollTryOn(job: TryOnJob) {
-    for (let attempt = 0; attempt < 90; attempt += 1) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
       const params = new URLSearchParams({
         requestId: job.requestId,
         responseUrl: job.responseUrl
@@ -151,7 +177,7 @@ export default function TryOnPage() {
       }
 
       setStatus(`Try-on ${pollData.state || "running"}... ${pollData.status ? `(${pollData.status})` : ""}`);
-      await sleep(1400);
+      await sleep(900);
     }
 
     throw new Error("Try-on is still processing. Please retry in a minute.");
@@ -175,6 +201,7 @@ export default function TryOnPage() {
   ) {
     setStatus(`Submitting overlay step ${step}/${total}...`);
     const stepType = inferGarmentType(garmentPayload, selectedType);
+    const waitInline = total === 1;
     const res = await fetch("/api/tryon", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -182,10 +209,12 @@ export default function TryOnPage() {
         personImage: personPayload,
         garmentImage: garmentPayload,
         garmentType: stepType,
-        awaitResult: false
+        awaitResult: waitInline
       })
     });
-
+    if (!res.ok) {
+      throw new Error(`Try-on request failed with status ${res.status}.`);
+    }
     const data = (await res.json()) as {
       requestId?: string;
       statusUrl?: string;
@@ -210,8 +239,13 @@ export default function TryOnPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!subscriptionActive) {
+      setStatus("An active $12/month subscription is required. Please subscribe to continue.");
+      router.push("/subscribe");
+      return;
+    }
     if (tryCredits < 1) {
-      setStatus("Please pay $1 to unlock one virtual try before generating.");
+      setStatus("No try-on credits left. Pay $1 to add 2 try-ons.");
       return;
     }
     if (!personImage || !garmentImage) {
@@ -251,9 +285,8 @@ export default function TryOnPage() {
       setResultUrl(currentPerson);
       setStatus("Done. Full outfit overlay generated.");
       if (userId) {
-        const next = Math.max(tryCredits - 1, 0);
-        setTryCredits(next);
-        localStorage.setItem(`fashion_tryon_credits:${userId}`, String(next));
+        const next = await consumeTryOnCredits(userId, 1);
+        setTryCredits(next.tryOnCredits);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Try-on failed during upload or generation.";
@@ -268,21 +301,33 @@ export default function TryOnPage() {
       <div className="lux-phone-grid">
         <article className="lux-phone">
           <h4>Virtual Try-On</h4>
-          <p className="small">Paid try-on: $1 per try · Credits: {tryCredits}</p>
+          <p className="small">Paid try-on: ${TRYON_PACK_PRICE_USD} for {TRYON_PACK_CREDITS} tries · Credits: {tryCredits}</p>
           <button
             type="button"
             className="secondary"
-            onClick={() => {
+            onClick={async () => {
               if (!userId) return;
-              const next = tryCredits + 1;
-              setTryCredits(next);
-              localStorage.setItem(`fashion_tryon_credits:${userId}`, String(next));
-              setStatus("Payment test successful. 1 try credit added.");
+              setBillingBusy(true);
+              try {
+                const next = await addTryOnPack(userId, 1);
+                setTryCredits(next.tryOnCredits);
+                setStatus(`Payment test successful. ${TRYON_PACK_CREDITS} try-on credits added.`);
+              } catch {
+                setStatus("Unable to add try-on credits right now. Please try again.");
+              } finally {
+                setBillingBusy(false);
+              }
             }}
             style={{ marginBottom: 10 }}
+            disabled={billingBusy || !subscriptionActive}
           >
-            Pay $1 (Test) to Add 1 Try
+            {billingBusy ? "Processing..." : `Pay $${TRYON_PACK_PRICE_USD} (Test) to Add ${TRYON_PACK_CREDITS} Tries`}
           </button>
+          {!subscriptionActive ? (
+            <p className="small">
+              Subscription required. <Link href="/subscribe">Activate plan</Link>.
+            </p>
+          ) : null}
           <form onSubmit={onSubmit} className="grid">
             <label>
               Garment type
@@ -320,7 +365,7 @@ export default function TryOnPage() {
                 placeholder="https://...shirt.jpg&#10;https://...pants.jpg"
               />
             </label>
-            <button type="submit" disabled={loading}>{loading ? "Generating..." : "Confirm"}</button>
+            <button type="submit" disabled={loading || !subscriptionActive}>{loading ? "Generating..." : "Confirm"}</button>
           </form>
           {presetGarments.length ? <p className="small">Preset pieces: {presetGarments.length}</p> : null}
           {status ? <p className="small">{status}</p> : null}

@@ -132,8 +132,8 @@ export default function OnboardingPage() {
 
     await saveProfile(userId, payload);
     setExistingProfile(true);
-    setStatus("Saved. Opening your stylist welcome...");
-    router.push("/welcome");
+    setStatus("Saved. Continue to subscription setup...");
+    router.push("/subscribe");
   }
 
   return (

@@ -28,6 +28,19 @@ const schema = z.object({
     .nullable()
     .optional(),
   closet: z.array(z.record(z.unknown())).optional(),
+  weatherContext: z
+    .object({
+      locationLabel: z.string().optional(),
+      condition: z.string().optional(),
+      temperatureC: z.number().optional(),
+      feelsLikeC: z.number().optional(),
+      windKmh: z.number().optional(),
+      precipitationMm: z.number().optional(),
+      styleAdvice: z.string().optional(),
+      fetchedAt: z.number().optional()
+    })
+    .nullable()
+    .optional(),
   occasion: z.string().optional(),
   stylistName: z.string().optional(),
   conversationMode: z.enum(["chat", "talk"]).optional(),
@@ -69,6 +82,7 @@ Tone rules:
 Personalization rules:
 - Always use saved profile details: height, skin tone, age, profession, style goals.
 - Factor the occasion in every judgment.
+- Factor weather context (temperature, rain, wind, condition) in outfit recommendations.
 - If images are provided, visually analyze them before giving verdict.
 - If user shares only one clothing piece (for example only a shirt/top), ask a clear follow-up for the missing pieces (bottom/footwear/accessories) before finalizing.
 - If user says they are going out and asks to style them, first give 1-2 concrete outfit suggestions immediately, then ask: "If you have something specific in mind, share the dress photo and I will tell you honestly if it suits the occasion and you."
@@ -172,15 +186,20 @@ function closetInsights(closet: Array<Record<string, unknown>>) {
 
 export async function POST(req: NextRequest) {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    return NextResponse.json({ error: "OPENAI_API_KEY is missing." }, { status: 400 });
-  }
 
   try {
-    const body = schema.parse(await req.json());
+    const rawBody = await req.json();
+    const body = schema.parse(rawBody);
+    const lastUserMessage = [...body.messages].reverse().find((m) => m.role === "user");
+    const fallbackOccasion = body.occasion || "casual";
+    const fallbackName = body.profile?.name || "there";
+    const fallbackWeather = body.weatherContext?.styleAdvice ? ` Weather note: ${body.weatherContext.styleAdvice}` : "";
+    const fallbackReply = `Hey ${fallbackName}, for your ${fallbackOccasion} plan, start with a clean balanced outfit and one accent piece. Share your exact pieces and I will refine it honestly.${fallbackWeather}`;
+    if (!key) {
+      return NextResponse.json({ reply: fallbackReply });
+    }
 
     const client = new OpenAI({ apiKey: key });
-    const lastUserMessage = [...body.messages].reverse().find((m) => m.role === "user");
     const shouldRecommend = isRecommendationQuery(
       lastUserMessage?.content || "",
       Boolean(lastUserMessage?.images?.length)
@@ -190,6 +209,7 @@ export async function POST(req: NextRequest) {
       occasion: body.occasion ?? "casual",
       closetCount: body.closet?.length ?? 0,
       closet: body.closet?.slice(0, 25) ?? [],
+      weatherContext: body.weatherContext ?? null,
       stylistName: body.stylistName || "MirrorMe",
       conversationMode: body.conversationMode || "chat",
       preferredLanguage: body.preferredLanguage || "auto",

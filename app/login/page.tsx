@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCurrentUser, login, logout, signup, waitForAuthInit } from "@/lib/auth";
 import { loadProfile, saveProfile } from "@/lib/persistence";
+import { hasActiveSubscription, loadBilling } from "@/lib/subscription";
 import { COUNTRY_OPTIONS } from "@/lib/location";
 import { UserProfile } from "@/types/models";
 
@@ -100,6 +101,11 @@ export default function LoginPage() {
       const profile = await loadProfile(user.id);
       if (!profile) {
         router.push("/onboarding");
+        return;
+      }
+      const billing = await loadBilling(user.id);
+      if (!hasActiveSubscription(billing)) {
+        router.push("/subscribe");
         return;
       }
       router.push(profile.frontImageUrl ? "/occasion" : "/welcome");

@@ -6,6 +6,7 @@ import { waitForAuthInit } from "@/lib/auth";
 import { enrollBiometric, verifyBiometric } from "@/lib/biometric";
 import { localStore } from "@/lib/localStore";
 import { addClosetItem, loadCloset, markClosetItemWorn } from "@/lib/persistence";
+import { hasActiveSubscription, loadBilling } from "@/lib/subscription";
 import { AppSettings, ClosetItem } from "@/types/models";
 
 function uid() {
@@ -191,6 +192,11 @@ export default function ClosetPage() {
     waitForAuthInit().then(async (user) => {
       if (!user) {
         router.replace("/login");
+        return;
+      }
+      const billing = await loadBilling(user.id);
+      if (!hasActiveSubscription(billing)) {
+        router.replace("/subscribe");
         return;
       }
       setUserId(user.id);

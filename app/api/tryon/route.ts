@@ -295,7 +295,7 @@ async function pollFalUntilComplete(job: FalJobMeta, forbidden: Set<string>) {
     if (polled.state === "failed") {
       throw new Error(polled.error || "fal generation failed.");
     }
-    await sleep(1800);
+    await sleep(1100);
   }
 
   throw new Error(

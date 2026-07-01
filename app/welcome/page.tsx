@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { enrollBiometric, verifyBiometric } from "@/lib/biometric";
 import { localStore } from "@/lib/localStore";
 import { loadProfile, saveProfile } from "@/lib/persistence";
+import { hasActiveSubscription, loadBilling } from "@/lib/subscription";
 import { AppSettings, UserProfile } from "@/types/models";
 import { LuxShowcase } from "@/components/LuxShowcase";
 
@@ -28,6 +29,16 @@ const defaultSettings: AppSettings = {
   biometricSetup: false
 };
 
+type WelcomeQuote = { text: string; by: string };
+
+const DEFAULT_QUOTES: WelcomeQuote[] = [
+  { text: "Take the stones people throw at you and use them to build a monument.", by: "Ratan Tata" },
+  { text: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action.", by: "A. P. J. Abdul Kalam" },
+  { text: "In the middle of difficulty lies opportunity.", by: "Albert Einstein" },
+  { text: "Style is a way to say who you are without speaking.", by: "Rachel Zoe" },
+  { text: "Your confidence is your best outfit. Wear it every day.", by: "MirrorMe" }
+];
+
 export default function WelcomePage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
@@ -44,23 +55,14 @@ export default function WelcomePage() {
   const [typed, setTyped] = useState("");
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
+  const [motivationQuotes, setMotivationQuotes] = useState<WelcomeQuote[]>(DEFAULT_QUOTES);
   const [quoteStartIndex, setQuoteStartIndex] = useState(0);
   const [bioBusy, setBioBusy] = useState(false);
 
-  const motivationQuotes = useMemo(
-    () => [
-      { text: "Take the stones people throw at you and use them to build a monument.", by: "Ratan Tata" },
-      { text: "Dream, dream, dream. Dreams transform into thoughts and thoughts result in action.", by: "A. P. J. Abdul Kalam" },
-      { text: "In the middle of difficulty lies opportunity.", by: "Albert Einstein" },
-      { text: "Style is a way to say who you are without speaking.", by: "Rachel Zoe" },
-      { text: "Your confidence is your best outfit. Wear it every day.", by: "MirrorMe" }
-    ],
-    []
-  );
-
   const roomMessages = useMemo(() => {
     const name = profile?.name || "there";
-    const orderedQuotes = motivationQuotes.map((_, idx) => motivationQuotes[(quoteStartIndex + idx) % motivationQuotes.length]);
+    const quotePool = motivationQuotes.length ? motivationQuotes : DEFAULT_QUOTES;
+    const orderedQuotes = quotePool.map((_, idx) => quotePool[(quoteStartIndex + idx) % quotePool.length]);
     return [
       `Hey ${name}, welcome to your personal dressing room.`,
       "I will be your personal assistant throughout your personal dressing room. Go to the occasion page to select your occasion. Once you select the occasion, the stylist page will open and I will be there with better suggestions for your day. Let's go.",
@@ -83,6 +85,52 @@ export default function WelcomePage() {
           effectiveSettings.biometricSetup))
   );
 
+  const loadDynamicQuotes = useCallback(async (activeUserId: string, activeName: string) => {
+    if (typeof window === "undefined") return;
+    const cacheKey = `fashion_welcome_quotes:${activeUserId}`;
+    const now = Date.now();
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { updatedAt?: number; quotes?: WelcomeQuote[] };
+        if (parsed.updatedAt && now - parsed.updatedAt < 6 * 60 * 60 * 1000 && Array.isArray(parsed.quotes) && parsed.quotes.length >= 3) {
+          setMotivationQuotes(parsed.quotes);
+          setQuoteStartIndex(Math.floor(Math.random() * parsed.quotes.length));
+          return;
+        }
+      }
+    } catch {
+      // ignore malformed cache and continue
+    }
+
+    try {
+      const res = await fetch("/api/welcome-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: activeName || undefined })
+      });
+      const data = (await res.json()) as { quotes?: WelcomeQuote[] };
+      const quotes = (data.quotes || [])
+        .map((q) => ({
+          text: String(q.text || "").trim(),
+          by: String(q.by || "MirrorMe").trim() || "MirrorMe"
+        }))
+        .filter((q) => q.text.length >= 8)
+        .slice(0, 8);
+
+      if (quotes.length) {
+        setMotivationQuotes(quotes);
+        setQuoteStartIndex(Math.floor(Math.random() * quotes.length));
+        localStorage.setItem(cacheKey, JSON.stringify({ updatedAt: now, quotes }));
+        return;
+      }
+    } catch {
+      // fallback below
+    }
+
+    setQuoteStartIndex(Math.floor(Math.random() * DEFAULT_QUOTES.length));
+  }, []);
+
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
       if (!user) {
@@ -100,13 +148,7 @@ export default function WelcomePage() {
       setProfile(loadedProfile);
       const loadedSettings = localStore.getAppSettings(user.id) || defaultSettings;
       setSettings({ ...defaultSettings, ...loadedSettings });
-      if (typeof window !== "undefined") {
-        const quoteKey = `fashion_welcome_quote_seed:${user.id}`;
-        const prevSeed = Number(localStorage.getItem(quoteKey) || "0");
-        const nextSeed = Number.isFinite(prevSeed) ? (prevSeed + 1) % motivationQuotes.length : 0;
-        localStorage.setItem(quoteKey, String(nextSeed));
-        setQuoteStartIndex(nextSeed);
-      }
+      await loadDynamicQuotes(user.id, loadedProfile.name || user.name || "");
       const raw = typeof window !== "undefined" ? localStorage.getItem(`fashion_welcome_auth_at:${user.id}`) : null;
       const lastAuth = raw ? Number(raw) : 0;
       const ttl = (loadedSettings?.authTimeoutMinutes || 45) * 60 * 1000;
@@ -116,7 +158,7 @@ export default function WelcomePage() {
       }
       setAuthResolved(true);
     });
-  }, [router, motivationQuotes.length]);
+  }, [router, loadDynamicQuotes]);
 
   useEffect(() => {
     if (!guestMode) return;
@@ -238,6 +280,12 @@ export default function WelcomePage() {
 
   async function continueToOccasion() {
     if (!userId || !profile) return;
+    const billing = await loadBilling(userId);
+    if (!hasActiveSubscription(billing)) {
+      setStatus("Subscription is required before entering the app.");
+      router.push("/subscribe");
+      return;
+    }
     if (!(profile.frontImageUrl || "").trim()) {
       setStatus("Please add your front photo in Menu > Account first.");
       return;

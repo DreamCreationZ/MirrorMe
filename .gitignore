@@ -4,3 +4,10 @@ node_modules
 .env.local
 .DS_Store
 .vercel
+.env*.local
+deploy/terraform/.terraform/
+deploy/terraform/.terraform.lock.hcl
+deploy/terraform/*.tfstate
+deploy/terraform/*.tfstate.*
+deploy/terraform/*.generated
+deploy/terraform/*.tfvars

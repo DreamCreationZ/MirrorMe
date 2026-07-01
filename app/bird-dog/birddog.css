@@ -1,0 +1,288 @@
+.bd-root {
+  --bd-bg: #f3f0e7;
+  --bd-panel: #fffdf8;
+  --bd-ink: #0f0f0f;
+  --bd-line: #d8d2c4;
+  --bd-danger: #b10f0f;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 14px 14px 84px;
+  color: var(--bd-ink);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+.bd-root h1,
+.bd-root h2,
+.bd-root h3,
+.bd-root strong {
+  letter-spacing: 0.2px;
+}
+
+.bd-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.org-chip {
+  border: 2px solid var(--org-primary);
+  background: linear-gradient(135deg, var(--org-primary), #122437);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 140px;
+  text-align: center;
+}
+
+.org-chip strong {
+  display: block;
+  color: var(--org-accent);
+}
+
+.bd-root .panel {
+  background: var(--bd-panel);
+  border: 1px solid var(--bd-line);
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
+}
+
+.bd-root .grid2 {
+  display: grid;
+  gap: 12px;
+}
+
+.bd-root .row {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+}
+
+.bd-root .row.wrap {
+  flex-wrap: wrap;
+}
+
+.bd-root label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: var(--bd-ink);
+}
+
+.bd-root input,
+.bd-root select,
+.bd-root textarea,
+.bd-root button {
+  font: inherit;
+}
+
+.bd-root input,
+.bd-root select,
+.bd-root textarea {
+  width: 100%;
+  border: 1px solid #bbb39f;
+  background: #fff;
+  color: #0f0f0f;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.bd-root button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+  background: var(--org-primary);
+  color: #fff;
+}
+
+.bd-root button.secondary {
+  background: #ece5d6;
+  color: #1b1b1b;
+  border: 1px solid #bfb39a;
+}
+
+.bd-root button.danger,
+.bd-root button.pulse {
+  background: var(--bd-danger);
+}
+
+.bd-root .pulse-box {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.bd-root .import-box {
+  border: 1px dashed #bfb39a;
+  background: #fffcf4;
+  border-radius: 10px;
+  padding: 10px;
+  margin: 8px 0 10px;
+}
+
+.bd-root .dashboard-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.bd-root .tournament-card {
+  text-align: left;
+  border: 1px solid var(--bd-line);
+  border-radius: 12px;
+  background: var(--bd-panel);
+  color: var(--bd-ink);
+  padding: 12px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06);
+}
+
+.bd-root .tournament-card h3 {
+  margin: 0 0 8px;
+}
+
+.bd-root .tournament-card p {
+  margin: 0 0 6px;
+}
+
+.bd-root .open-hint {
+  display: inline-block;
+  margin-top: 8px;
+  font-weight: 700;
+  color: var(--org-primary);
+}
+
+.bd-root .player-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.bd-root .player-card {
+  text-align: left;
+  border: 2px solid #b7ad9a;
+  color: #141414;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.bd-root .player-card.active {
+  border-color: var(--org-primary);
+  box-shadow: inset 0 0 0 2px var(--org-accent);
+}
+
+.bd-root .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bd-root .checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.bd-root .player-card span,
+.bd-root .player-card small {
+  display: block;
+  opacity: 0.86;
+}
+
+.bd-root .path-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.bd-root .path-list li span {
+  display: block;
+}
+
+.bd-root .approved-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bd-root .mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.bd-root .mini-table th,
+.bd-root .mini-table td {
+  border: 1px solid #d2cab8;
+  padding: 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.bd-root .mini-table th {
+  background: #f4eee0;
+}
+
+.bd-root .inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bd-root .small-btn {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.bd-root .log-list {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.bd-root .log-card {
+  border: 1px solid #c8bfad;
+  border-radius: 10px;
+  background: #fffcf5;
+  padding: 10px;
+}
+
+.bd-root .muted {
+  color: #4f4a3d;
+}
+
+.bd-root .footer-note {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+@media (min-width: 920px) {
+  .bd-root .grid2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .bd-root {
+    padding-bottom: 120px;
+  }
+
+  .bd-root .pulse-box,
+  .bd-root .row {
+    align-items: stretch;
+  }
+
+  .bd-root button.pulse,
+  .bd-root button.danger {
+    position: sticky;
+    bottom: 12px;
+    z-index: 5;
+  }
+}

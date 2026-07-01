@@ -1,10 +1,11 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { localStore } from "@/lib/localStore";
 import { loadCloset, loadProfile } from "@/lib/persistence";
+import { hasActiveSubscription, loadBilling } from "@/lib/subscription";
 import { ClosetItem, StylistConfig, StylistMessage, StylistRecommendation, UserProfile } from "@/types/models";
 
 const APP_NAME = "MirrorMe";
@@ -22,6 +23,17 @@ type SpeechRec = {
 };
 
 type SpeechRecCtor = new () => SpeechRec;
+
+type WeatherContext = {
+  locationLabel: string;
+  condition: string;
+  temperatureC: number;
+  feelsLikeC: number;
+  windKmh: number;
+  precipitationMm: number;
+  styleAdvice: string;
+  fetchedAt: number;
+};
 
 function introMessage(name: string): StylistMessage {
   return {
@@ -44,21 +56,25 @@ function directWelcome(userName: string): StylistMessage {
   };
 }
 
-function localFallbackReply(userName: string, occ: string, text: string) {
+function localFallbackReply(userName: string, occ: string, text: string, weather?: WeatherContext | null) {
   const t = text.toLowerCase();
+  const weatherTail =
+    weather && weather.styleAdvice
+      ? ` Weather in ${weather.locationLabel} is ${Math.round(weather.temperatureC)}°C with ${weather.condition}. ${weather.styleAdvice}`
+      : "";
   if (t.includes("hi") || t.includes("hello")) {
-    return `Hey ${userName}, I am ${APP_NAME}. For your ${occ} plan, I can suggest a full look right now.`;
+    return `Hey ${userName}, I am ${APP_NAME}. For your ${occ} plan, I can suggest a full look right now.${weatherTail}`;
   }
   if (t.includes("casual") || t.includes("outing") || t.includes("day")) {
-    return "Go with a clean fitted top, straight jeans or trousers, low-contrast shoes, and one subtle accessory. This will look practical and confident.";
+    return `Go with a clean fitted top, straight jeans or trousers, low-contrast shoes, and one subtle accessory. This will look practical and confident.${weatherTail}`;
   }
   if (t.includes("party")) {
-    return "Use one statement piece and keep the rest clean. Too many loud elements together will reduce the overall look.";
+    return `Use one statement piece and keep the rest clean. Too many loud elements together will reduce the overall look.${weatherTail}`;
   }
   if (t.includes("makeup")) {
-    return "Keep base natural, define eyes, and use a lip shade slightly deeper than your natural tone for a polished look.";
+    return `Keep base natural, define eyes, and use a lip shade slightly deeper than your natural tone for a polished look.${weatherTail}`;
   }
-  return "Tell me your occasion and what pieces you have in mind. I will give you honest, practical styling advice.";
+  return `Tell me your occasion and what pieces you have in mind. I will give you honest, practical styling advice.${weatherTail}`;
 }
 
 function speechText(input: string) {
@@ -113,11 +129,86 @@ export default function StylistPage() {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [talkStatus, setTalkStatus] = useState("");
+  const [weatherContext, setWeatherContext] = useState<WeatherContext | null>(null);
+  const [weatherStatus, setWeatherStatus] = useState("");
 
   const chatListRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef<"chat" | "talk">("chat");
   const recognizerRef = useRef<SpeechRec | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const pushWeatherIntroMessage = useCallback((activeUserId: string, weather: WeatherContext) => {
+    if (typeof window === "undefined") return;
+    const dayKey = new Date().toISOString().slice(0, 10);
+    const introKey = `fashion_weather_intro:${activeUserId}:${dayKey}`;
+    if (sessionStorage.getItem(introKey) === "1") return;
+
+    const weatherMessage: StylistMessage = {
+      role: "assistant",
+      content: `Live weather in ${weather.locationLabel}: ${Math.round(weather.temperatureC)}°C, feels like ${Math.round(weather.feelsLikeC)}°C, ${weather.condition}. ${weather.styleAdvice}`
+    };
+
+    setMessages((prev) => {
+      const next = [...prev, weatherMessage];
+      localStore.setStylistMessages(activeUserId, next);
+      return next;
+    });
+    sessionStorage.setItem(introKey, "1");
+  }, []);
+
+  const getGeoPosition = useCallback((): Promise<GeolocationPosition> => {
+    return new Promise((resolve, reject) => {
+      if (typeof window === "undefined" || !("geolocation" in navigator)) {
+        reject(new Error("Geolocation is unavailable on this device."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: false,
+        timeout: 12000,
+        maximumAge: 10 * 60 * 1000
+      });
+    });
+  }, []);
+
+  const loadLiveWeather = useCallback(async (activeUserId: string) => {
+    if (typeof window === "undefined") return;
+    const cacheKey = `fashion_weather_cache:${activeUserId}`;
+    const now = Date.now();
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as WeatherContext;
+        if (parsed?.fetchedAt && now - parsed.fetchedAt < 30 * 60 * 1000) {
+          setWeatherContext(parsed);
+          setWeatherStatus(`Weather ready: ${parsed.locationLabel}`);
+          return;
+        }
+      }
+    } catch {
+      // ignore malformed cache and continue
+    }
+
+    try {
+      setWeatherStatus("Detecting your location for weather-aware styling...");
+      const pos = await getGeoPosition();
+      const params = new URLSearchParams({
+        lat: String(pos.coords.latitude),
+        lon: String(pos.coords.longitude)
+      });
+      const res = await fetch(`/api/weather/current?${params.toString()}`, { cache: "no-store" });
+      const data = (await res.json()) as WeatherContext & { error?: string };
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Unable to fetch weather.");
+      }
+      setWeatherContext(data);
+      setWeatherStatus(`Weather ready: ${data.locationLabel}`);
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      pushWeatherIntroMessage(activeUserId, data);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Location/weather unavailable.";
+      setWeatherStatus(`Weather unavailable: ${msg}`);
+    }
+  }, [getGeoPosition, pushWeatherIntroMessage]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -131,6 +222,11 @@ export default function StylistPage() {
       }
 
       setUserId(user.id);
+      const billing = await loadBilling(user.id);
+      if (!hasActiveSubscription(billing)) {
+        router.replace("/subscribe");
+        return;
+      }
       const loadedProfile = await loadProfile(user.id);
       setProfile(loadedProfile);
       setCloset(await loadCloset(user.id));
@@ -175,6 +271,7 @@ export default function StylistPage() {
         setMessages(initial);
         localStore.setStylistMessages(user.id, initial);
         if (typeof window !== "undefined") localStorage.setItem(seenKey, "1");
+        void loadLiveWeather(user.id);
         return;
       }
 
@@ -194,8 +291,9 @@ export default function StylistPage() {
       setMessages(next);
       localStore.setStylistMessages(user.id, next);
       if (typeof window !== "undefined") localStorage.setItem(seenKey, "1");
+      void loadLiveWeather(user.id);
     });
-  }, [router]);
+  }, [router, loadLiveWeather]);
 
   useEffect(() => {
     chatListRef.current?.scrollTo({ top: chatListRef.current.scrollHeight, behavior: "smooth" });
@@ -374,6 +472,7 @@ export default function StylistPage() {
           messages: next,
           profile,
           closet,
+          weatherContext,
           occasion,
           stylistName,
           conversationMode: modeRef.current,
@@ -386,7 +485,7 @@ export default function StylistPage() {
 
       const assistant: StylistMessage = {
         role: "assistant",
-        content: data.reply ?? localFallbackReply(profile?.name || "there", occasion, messageText),
+        content: data.reply ?? localFallbackReply(profile?.name || "there", occasion, messageText, weatherContext),
         recommendation: data.recommendation
       };
 
@@ -396,7 +495,7 @@ export default function StylistPage() {
     } catch {
       const failMessage: StylistMessage = {
         role: "assistant",
-        content: localFallbackReply(profile?.name || "there", occasion, messageText)
+        content: localFallbackReply(profile?.name || "there", occasion, messageText, weatherContext)
       };
       persist([...next, failMessage]);
       if (modeRef.current === "talk") speak(failMessage.content);
@@ -430,6 +529,13 @@ export default function StylistPage() {
             </button>
           </div>
         </div>
+        {weatherContext ? (
+          <p className="small" style={{ marginTop: 6, marginBottom: 0 }}>
+            Weather: {weatherContext.locationLabel} · {Math.round(weatherContext.temperatureC)}°C · {weatherContext.condition}
+          </p>
+        ) : weatherStatus ? (
+          <p className="small" style={{ marginTop: 6, marginBottom: 0 }}>{weatherStatus}</p>
+        ) : null}
 
         <div
           style={{

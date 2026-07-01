@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { AppNav } from "@/components/AppNav";
 
 export const metadata: Metadata = {
-  title: "Brutal Stylist",
-  description: "AI fashion stylist with closet inventory and virtual try-on"
+  title: "MirrorMe",
+  description: "MirrorMe AI stylist with closet inventory and virtual try-on"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

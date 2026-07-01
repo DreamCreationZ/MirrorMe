@@ -14,6 +14,11 @@ Fashion app MVP with:
 - Wardrobe image normalization: uploaded garment photos are auto-cleaned and standardized for hanger-style presentation
 - Optional studio-grade background removal for wardrobe uploads via remove.bg (`REMOVE_BG_API_KEY`)
 - Virtual try-on API pipeline (mock + pluggable real provider)
+- Dynamic welcome quotes (AI-generated with fallback rotation cache)
+- Live weather-aware styling: detects user location (with permission), fetches current weather, and tailors outfit guidance
+- Subscription + credits:
+  - Active subscription is required to use core app features (`$12/month`)
+  - Try-on packs are priced at `$1` for `2` tries (test billing flow)
 
 ## Stack
 - Next.js (App Router) + TypeScript
@@ -38,15 +43,21 @@ Fashion app MVP with:
 ## Flow
 1. `/login` - create account or login
 2. `/onboarding` - save profile details (height, skin tone, age, profession, etc.)
-3. `/closet` - add inventory items or skip
-4. `/occasion` - select occasion
-5. `/stylist` - chat with AI stylist (memory + image upload)
-6. `/try-on` - generate outfit overlay using configured provider
+3. `/subscribe` - activate monthly plan + buy try-on credits
+4. `/closet` - add inventory items or skip
+5. `/occasion` - select occasion
+6. `/stylist` - chat with AI stylist (memory + image upload)
+7. `/try-on` - generate outfit overlay using configured provider
 
 ## Firebase behavior
 - Login/Signup/Signout uses Firebase Auth.
 - Profile and closet are also written to Firestore when configured.
 - Stylist conversation memory and occasion are kept in localStorage per Firebase user ID.
+
+## Bird Dog production setup
+- Bird Dog APIs (`/api/bird-dog/*`) enforce authenticated coach identity in production.
+- Set `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, and `FIREBASE_ADMIN_PRIVATE_KEY` for server-side token verification and Firestore persistence.
+- Without Firebase Admin env vars, Bird Dog APIs run in dev fallback mode only (header-based identity + in-memory fallback).
 
 ## Honest stylist behavior
 Configured in `app/api/stylist/route.ts` with strict tone rules:
@@ -73,6 +84,7 @@ Current route is provider-agnostic (`app/api/tryon/route.ts`).
 - `TRYON_PROVIDER=fal_idm_vton`: calls fal queue API (`fal-ai/idm-vton`) and polls for final output
 - `TRYON_PROVIDER=custom`: forwards to `TRYON_PROVIDER_API_URL` with bearer auth
 - For `fal_idm_vton`, UI submits a job and polls status asynchronously (queued -> running -> completed).
+- Single-piece try-ons use inline wait mode, and polling intervals are reduced for faster completion pickup.
 
 ### Try-on setup (real provider)
 1. In `.env.local`, set:
@@ -87,3 +99,10 @@ Current route is provider-agnostic (`app/api/tryon/route.ts`).
 
 The app uploads selected images to Firebase Storage and sends public URLs to the try-on provider.
 If `TRYON_PROVIDER=mock`, output will be the original user photo (no real overlay).
+
+## Deploying on the same AWS server (Terraform)
+
+If you already run another app on the same EC2 server, use:
+- [deploy/terraform/README.md](/Users/swati/Documents/Playground/deploy/terraform/README.md)
+
+It deploys MirrorMe with isolated port/service/nginx config so existing apps are not disturbed.

@@ -9,6 +9,7 @@ import { UserProfile } from "@/types/models";
 
 const links = [
   ["Home", "/"],
+  ["Subscription", "/subscribe"],
   ["Occasion", "/occasion"],
   ["Stylist", "/stylist"],
   ["Try-On", "/try-on"]
@@ -16,6 +17,8 @@ const links = [
 
 export function AppNav() {
   const pathname = usePathname();
+  const isBirdDogRoute = pathname?.startsWith("/bird-dog");
+
   const [userName, setUserName] = useState("");
   const [userId, setUserId] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -58,6 +61,10 @@ export function AppNav() {
       setProfile(loaded);
     });
   }, []);
+
+  if (isBirdDogRoute) {
+    return null;
+  }
 
   async function fileToDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {

@@ -1,0 +1,23 @@
+host                 = "ec2-xx-xx-xx-xx.compute-1.amazonaws.com"
+ssh_user             = "ubuntu"
+ssh_private_key_path = "/Users/swati/.ssh/your-ec2-key.pem"
+ssh_port             = 22
+
+app_name   = "mirrorme"
+app_domain = "mirror.example.com"
+app_port   = 3001
+app_root   = "/srv/mirrorme"
+
+repo_url    = "https://github.com/your-org/your-repo.git"
+repo_branch = "main"
+
+# Optional: upload env file for this app service.
+# If empty, Terraform will still deploy with an empty /etc/mirrorme.env file.
+env_file_local_path = "/Users/swati/Documents/Playground/.env.local"
+
+sudo_prefix = "sudo"
+
+# Optional TLS via certbot.
+enable_certbot = false
+certbot_email  = "you@example.com"
+
