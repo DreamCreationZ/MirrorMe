@@ -108,9 +108,9 @@ export default function SubscribePage() {
       ) : null}
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-        <button type="button" className="secondary" onClick={() => router.push(continuePath)}>
-          Continue to App
-        </button>
+        <Link href={continuePath}>
+          <button type="button" className="secondary">Continue to App</button>
+        </Link>
         <Link href="/welcome">
           <button type="button" className="secondary">Back to Welcome</button>
         </Link>
