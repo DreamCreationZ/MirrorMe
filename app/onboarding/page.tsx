@@ -101,7 +101,6 @@ export default function OnboardingPage() {
       };
       if (requestId !== locationLookupIdRef.current) return;
       if (data?.found) {
-        setDirty(true);
         setForm((f) => ({
           ...f,
           state: data.state || f.state,
