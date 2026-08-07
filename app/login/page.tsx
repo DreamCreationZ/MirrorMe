@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { getCurrentUser, login, logout, signup, waitForAuthInit, type AuthUser } from "@/lib/auth";
 import { loadProfile, saveProfileLocal, syncProfileToCloud } from "@/lib/persistence";
 import { missingSignupFields } from "@/lib/profile-requirements";
@@ -34,7 +34,6 @@ const SKIN_TONE_OPTIONS = [
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [age, setAge] = useState(24);
@@ -54,12 +53,6 @@ export default function LoginPage() {
   const [activeSessionName, setActiveSessionName] = useState("");
   const [busy, setBusy] = useState(false);
   const locationLookupIdRef = useRef(0);
-
-  const safeNextPath = (() => {
-    const next = searchParams.get("next");
-    if (!next || !next.startsWith("/") || next.startsWith("//")) return "";
-    return next;
-  })();
 
   useEffect(() => {
     waitForAuthInit().then(async (session) => {
@@ -129,9 +122,6 @@ export default function LoginPage() {
   }
 
   function routeAfterAuth(fallback: string) {
-    if (safeNextPath && safeNextPath !== ROUTES.login) {
-      return safeNextPath;
-    }
     return fallback;
   }
 
@@ -199,7 +189,6 @@ export default function LoginPage() {
     <section className="card phone-single" style={{ maxWidth: 560, margin: "0 auto" }}>
       <h1>{mode === "login" ? "Log In" : "Create Account"}</h1>
       <p className="small">Login is required to keep profile, closet, and stylist memory per user.</p>
-      {safeNextPath ? <p className="small">After login, you will continue to: <strong>{safeNextPath}</strong></p> : null}
       {activeSessionName ? (
         <div style={{ marginBottom: 12 }}>
           <p className="small">Currently signed in as {activeSessionName}. You can continue, sign out, or switch account below.</p>
