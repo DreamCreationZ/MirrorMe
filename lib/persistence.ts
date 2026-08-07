@@ -97,7 +97,7 @@ export async function deleteClosetItem(userId: string, itemId: string): Promise<
 }
 
 export async function setClosetItemFavorite(userId: string, itemId: string, favorite: boolean): Promise<ClosetItem | null> {
-  return updateClosetItem(userId, itemId, { favorite });
+  return updateClosetItem(userId, itemId, { favorite } as unknown as Partial<ClosetItem>);
 }
 
 export async function loadCloset(userId: string): Promise<ClosetItem[]> {
