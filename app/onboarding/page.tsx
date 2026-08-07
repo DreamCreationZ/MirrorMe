@@ -5,38 +5,12 @@ import { useRouter } from "next/navigation";
 import { waitForAuthInit } from "@/lib/auth";
 import { COUNTRY_OPTIONS, findCountryByName } from "@/lib/location";
 import { loadProfile, saveProfileLocal, syncProfileToCloud } from "@/lib/persistence";
-import { UploadedImageMeta, UserProfile } from "@/types/models";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { useImageUploadSlot } from "@/features/shared/presentation/use-image-upload-slot";
+import type { UserProfile } from "@/types/models";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-type OnboardingFormState = {
-  name: string;
-  age: number;
-  heightCm: number;
-  skinTone: string;
-  frontImageUrl: string;
-  frontImageMeta?: UploadedImageMeta;
-  sideImageUrl: string;
-  sideImageMeta?: UploadedImageMeta;
-  backImageUrl: string;
-  backImageMeta?: UploadedImageMeta;
-  country: string;
-  state: string;
-  pincode: string;
-  phoneCountryCode: string;
-  mobileNumber: string;
-  profession: string;
-  styleGoals: string;
-  notes: string;
-};
-
-type ImageUrlField = "frontImageUrl" | "sideImageUrl" | "backImageUrl";
-type ImageMetaField = "frontImageMeta" | "sideImageMeta" | "backImageMeta";
 const SKIN_TONE_OPTIONS = [
   "Very fair",
   "Fair",
@@ -51,17 +25,12 @@ const SKIN_TONE_OPTIONS = [
 export default function OnboardingPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
-  const [form, setForm] = useState<OnboardingFormState>({
+  const [form, setForm] = useState({
     name: "",
     age: 24,
     heightCm: 165,
     skinTone: "medium",
     frontImageUrl: "",
-    frontImageMeta: undefined,
-    sideImageUrl: "",
-    sideImageMeta: undefined,
-    backImageUrl: "",
-    backImageMeta: undefined,
     country: "",
     state: "",
     pincode: "",
@@ -78,10 +47,6 @@ export default function OnboardingPage() {
   const [dirty, setDirty] = useState(false);
   const [locationStatus, setLocationStatus] = useState("");
   const locationLookupIdRef = useRef(0);
-
-  const frontUpload = useImageUploadSlot("person-front");
-  const sideUpload = useImageUploadSlot("person-side");
-  const backUpload = useImageUploadSlot("person-back");
 
   useEffect(() => {
     waitForAuthInit().then(async (user) => {
@@ -101,11 +66,6 @@ export default function OnboardingPage() {
         heightCm: profile.heightCm,
         skinTone: profile.skinTone,
         frontImageUrl: profile.frontImageUrl || "",
-        frontImageMeta: profile.frontImageMeta,
-        sideImageUrl: profile.sideImageUrl || "",
-        sideImageMeta: profile.sideImageMeta,
-        backImageUrl: profile.backImageUrl || "",
-        backImageMeta: profile.backImageMeta,
         country: profile.country || "",
         state: profile.state || "",
         pincode: profile.pincode || "",
@@ -122,6 +82,7 @@ export default function OnboardingPage() {
   const detectLocationFromPincode = useCallback(async () => {
     const normalized = form.pincode.trim();
     if (normalized.length < 4) return;
+
     const requestId = ++locationLookupIdRef.current;
     const selectedCountryIso = COUNTRY_OPTIONS.find((item) => item.name === form.country)?.iso || "";
     const params = new URLSearchParams({ pincode: normalized });
@@ -140,6 +101,7 @@ export default function OnboardingPage() {
       };
       if (requestId !== locationLookupIdRef.current) return;
       if (data?.found) {
+        setDirty(true);
         setForm((f) => ({
           ...f,
           state: data.state || f.state,
@@ -165,59 +127,21 @@ export default function OnboardingPage() {
     return () => clearTimeout(timer);
   }, [detectLocationFromPincode, form.pincode]);
 
-  function applyUploadedImage(urlField: ImageUrlField, metaField: ImageMetaField, uploaded: UploadedImageMeta) {
-    setDirty(true);
-    setForm((prev) => ({
-      ...prev,
-      [urlField]: uploaded.url,
-      [metaField]: uploaded
-    }));
-    if (uploaded.source === "inline-data") {
-      setStatus("Cloud upload unavailable. Image stored as secure local fallback.");
-      return;
-    }
-    setStatus("Image uploaded securely.");
+  async function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read image."));
+      reader.readAsDataURL(file);
+    });
   }
 
-  async function onPersonImageChange(
-    e: ChangeEvent<HTMLInputElement>,
-    slot: typeof frontUpload,
-    urlField: ImageUrlField,
-    metaField: ImageMetaField
-  ) {
+  async function onFrontImageChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!userId) {
-      setStatus("Session is initializing. Please wait a moment and retry.");
-      return;
-    }
-
-    slot.clearError();
-    const uploaded = await slot.start(file, {
-      userId,
-      allowInlineFallback: true
-    });
-    if (uploaded) {
-      applyUploadedImage(urlField, metaField, uploaded);
-    }
-  }
-
-  async function retryPersonImage(
-    slot: typeof frontUpload,
-    urlField: ImageUrlField,
-    metaField: ImageMetaField
-  ) {
-    if (!userId) {
-      setStatus("Session is initializing. Please wait a moment and retry.");
-      return;
-    }
-    const uploaded = await slot.retry({
-      userId,
-      allowInlineFallback: true
-    });
-    if (uploaded) {
-      applyUploadedImage(urlField, metaField, uploaded);
-    }
+    const image = await fileToDataUrl(file);
+    setDirty(true);
+    setForm((f) => ({ ...f, frontImageUrl: image }));
   }
 
   async function onSubmit(e: FormEvent) {
@@ -227,12 +151,10 @@ export default function OnboardingPage() {
       setStatus("Session is initializing. Please wait 2 seconds and click save again.");
       return;
     }
-
     if (!form.frontImageUrl) {
       setStatus("Front standing photo is required before saving profile.");
       return;
     }
-
     if (existingProfile && !dirty) {
       setStatus("Profile already up to date.");
       router.push("/subscribe");
@@ -243,14 +165,6 @@ export default function OnboardingPage() {
     setStatus("Saving profile...");
 
     try {
-      const normalizedSide =
-        form.sideImageMeta?.source === "inline-data"
-          ? { sideImageUrl: "", sideImageMeta: undefined }
-          : { sideImageUrl: form.sideImageUrl, sideImageMeta: form.sideImageMeta };
-      const normalizedBack =
-        form.backImageMeta?.source === "inline-data"
-          ? { backImageUrl: "", backImageMeta: undefined }
-          : { backImageUrl: form.backImageUrl, backImageMeta: form.backImageMeta };
       const payload: UserProfile = {
         id: existingProfileRecord?.id || uid(),
         name: form.name.trim(),
@@ -258,9 +172,6 @@ export default function OnboardingPage() {
         heightCm: Number(form.heightCm),
         skinTone: form.skinTone.trim(),
         frontImageUrl: form.frontImageUrl,
-        frontImageMeta: form.frontImageMeta,
-        ...normalizedSide,
-        ...normalizedBack,
         country: form.country.trim(),
         state: form.state.trim(),
         pincode: form.pincode.trim(),
@@ -287,10 +198,10 @@ export default function OnboardingPage() {
   }
 
   return (
-    <Card as="section" variant="premium" className="phone-single">
+    <section className="card phone-single">
       <h1>Guided Setup</h1>
       <p className="small">Step 1: build your persona. Step 2: enter virtual room auth. Step 3: pick occasion and style.</p>
-      <div className="grid cols-3 stack-sm">
+      <div className="grid cols-3" style={{ marginBottom: 10 }}>
         <div className="badge">1. Persona</div>
         <div className="badge">2. Welcome Auth</div>
         <div className="badge">3. Closet + Stylist</div>
@@ -302,100 +213,15 @@ export default function OnboardingPage() {
       ) : null}
 
       <form onSubmit={onSubmit} className="grid cols-2">
-        <label className="full-span upload6-field">
-          Upload front standing photo (required)
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="user"
-            onChange={(e) => void onPersonImageChange(e, frontUpload, "frontImageUrl", "frontImageMeta")}
-            required={!form.frontImageUrl}
-            disabled={frontUpload.state.busy}
-          />
-          <div className="upload6-status-row">
-            {frontUpload.state.busy ? (
-              <>
-                <div className="upload6-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={frontUpload.state.progress}>
-                  <span style={{ width: `${frontUpload.state.progress}%` }} />
-                </div>
-                <small>{frontUpload.state.message || `Processing ${frontUpload.state.progress}%`}</small>
-                <Button type="button" size="sm" variant="ghost" onClick={frontUpload.cancel}>Cancel</Button>
-              </>
-            ) : null}
-            {frontUpload.state.error ? <small className="text-bad">{frontUpload.state.error}</small> : null}
-            {!frontUpload.state.busy && frontUpload.state.error && frontUpload.canRetry ? (
-              <Button type="button" size="sm" variant="secondary" onClick={() => void retryPersonImage(frontUpload, "frontImageUrl", "frontImageMeta")}>Retry Upload</Button>
-            ) : null}
-          </div>
+        <label style={{ gridColumn: "1 / -1" }}>
+          Upload your front standing photo (required)
+          <input type="file" accept="image/*" onChange={onFrontImageChange} required={!form.frontImageUrl} />
         </label>
         {form.frontImageUrl ? (
-          <div className="full-span">
+          <div style={{ gridColumn: "1 / -1" }}>
             <img src={form.frontImageUrl} alt="Front profile preview" className="front-preview" />
           </div>
         ) : null}
-
-        <label className="full-span upload6-field">
-          Upload side standing photo (optional)
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="user"
-            onChange={(e) => void onPersonImageChange(e, sideUpload, "sideImageUrl", "sideImageMeta")}
-            disabled={sideUpload.state.busy}
-          />
-          <div className="upload6-status-row">
-            {sideUpload.state.busy ? (
-              <>
-                <div className="upload6-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={sideUpload.state.progress}>
-                  <span style={{ width: `${sideUpload.state.progress}%` }} />
-                </div>
-                <small>{sideUpload.state.message || `Processing ${sideUpload.state.progress}%`}</small>
-                <Button type="button" size="sm" variant="ghost" onClick={sideUpload.cancel}>Cancel</Button>
-              </>
-            ) : null}
-            {sideUpload.state.error ? <small className="text-bad">{sideUpload.state.error}</small> : null}
-            {!sideUpload.state.busy && sideUpload.state.error && sideUpload.canRetry ? (
-              <Button type="button" size="sm" variant="secondary" onClick={() => void retryPersonImage(sideUpload, "sideImageUrl", "sideImageMeta")}>Retry Upload</Button>
-            ) : null}
-          </div>
-        </label>
-        {form.sideImageUrl ? (
-          <div className="full-span">
-            <img src={form.sideImageUrl} alt="Side profile preview" className="front-preview" />
-          </div>
-        ) : null}
-
-        <label className="full-span upload6-field">
-          Upload back standing photo (optional)
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="user"
-            onChange={(e) => void onPersonImageChange(e, backUpload, "backImageUrl", "backImageMeta")}
-            disabled={backUpload.state.busy}
-          />
-          <div className="upload6-status-row">
-            {backUpload.state.busy ? (
-              <>
-                <div className="upload6-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={backUpload.state.progress}>
-                  <span style={{ width: `${backUpload.state.progress}%` }} />
-                </div>
-                <small>{backUpload.state.message || `Processing ${backUpload.state.progress}%`}</small>
-                <Button type="button" size="sm" variant="ghost" onClick={backUpload.cancel}>Cancel</Button>
-              </>
-            ) : null}
-            {backUpload.state.error ? <small className="text-bad">{backUpload.state.error}</small> : null}
-            {!backUpload.state.busy && backUpload.state.error && backUpload.canRetry ? (
-              <Button type="button" size="sm" variant="secondary" onClick={() => void retryPersonImage(backUpload, "backImageUrl", "backImageMeta")}>Retry Upload</Button>
-            ) : null}
-          </div>
-        </label>
-        {form.backImageUrl ? (
-          <div className="full-span">
-            <img src={form.backImageUrl} alt="Back profile preview" className="front-preview" />
-          </div>
-        ) : null}
-
         <label>
           Name
           <input
@@ -556,7 +382,7 @@ export default function OnboardingPage() {
             required
           />
         </label>
-        <label className="full-span">
+        <label style={{ gridColumn: "1 / -1" }}>
           Notes
           <textarea
             value={form.notes}
@@ -567,15 +393,15 @@ export default function OnboardingPage() {
             rows={4}
           />
         </label>
-        {locationStatus ? <p className="small full-span">{locationStatus}</p> : null}
-        <div className="full-span action-row">
-          <Button type="submit" variant="gradient" disabled={saving}>{saving ? "Saving..." : "Save Profile"}</Button>
-          <Button type="button" variant="secondary" onClick={() => router.push("/closet")}>Go to Closet</Button>
-          <Button type="button" variant="secondary" onClick={() => router.push("/occasion")}>Pick Occasion</Button>
+        {locationStatus ? <p className="small" style={{ gridColumn: "1 / -1" }}>{locationStatus}</p> : null}
+        <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Profile"}</button>
+          <button type="button" className="secondary" onClick={() => router.push("/closet")}>Go to Closet</button>
+          <button type="button" className="secondary" onClick={() => router.push("/occasion")}>Pick Occasion</button>
         </div>
       </form>
 
       {status ? <p className="small">{status}</p> : null}
-    </Card>
+    </section>
   );
 }

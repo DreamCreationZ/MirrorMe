@@ -1,4 +1,4 @@
-import type { UserProfile } from "@/models";
+import type { UserProfile } from "@/types/models";
 
 type SignupProfileInput = Partial<Pick<
   UserProfile,
@@ -60,4 +60,3 @@ export function missingSignupFields(profile: SignupProfileInput | null | undefin
 export function hasSignupProfile(profile: SignupProfileInput | null | undefined) {
   return missingSignupFields(profile).length === 0;
 }
-
