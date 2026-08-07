@@ -58,7 +58,7 @@ export async function addClosetItem(userId: string, item: ClosetItem): Promise<v
   const current = localStore.getCloset(userId);
   const duplicate = current.find((x) => closetKey(x) === closetKey(item));
   if (duplicate) return;
-  localStore.setCloset(userId, [{ ...item, updatedAt: item.updatedAt || item.createdAt }, ...current]);
+  localStore.setCloset(userId, [item, ...current]);
 
   if (!firebaseReady() || !db) return;
 
@@ -74,8 +74,7 @@ export async function updateClosetItem(userId: string, itemId: string, updates: 
     ...prev,
     ...updates,
     id: prev.id,
-    createdAt: prev.createdAt,
-    updatedAt: Date.now()
+    createdAt: prev.createdAt
   };
 
   const merged = current.map((item) => (item.id === itemId ? next : item));
@@ -102,12 +101,7 @@ export async function setClosetItemFavorite(userId: string, itemId: string, favo
 }
 
 export async function loadCloset(userId: string): Promise<ClosetItem[]> {
-  const local = dedupeCloset(localStore.getCloset(userId)).map((item) => ({
-    ...item,
-    tags: item.tags || [],
-    occasionTags: item.occasionTags || [],
-    updatedAt: item.updatedAt || item.createdAt
-  }));
+  const local = dedupeCloset(localStore.getCloset(userId));
   localStore.setCloset(userId, local);
   if (!firebaseReady() || !db) return local;
 
@@ -116,12 +110,7 @@ export async function loadCloset(userId: string): Promise<ClosetItem[]> {
     const snap = await getDocs(q);
     if (snap.empty) return local;
 
-    const merged = dedupeCloset(snap.docs.map((d) => d.data() as ClosetItem)).map((item) => ({
-      ...item,
-      tags: item.tags || [],
-      occasionTags: item.occasionTags || [],
-      updatedAt: item.updatedAt || item.createdAt
-    }));
+    const merged = dedupeCloset(snap.docs.map((d) => d.data() as ClosetItem));
     localStore.setCloset(userId, merged);
     return merged;
   } catch {
@@ -137,8 +126,7 @@ export async function markClosetItemWorn(userId: string, itemId: string): Promis
       ? {
           ...item,
           lastWornAt: now,
-          wearCount: (item.wearCount ?? 0) + 1,
-          updatedAt: now
+          wearCount: (item.wearCount ?? 0) + 1
         }
       : item
   );
