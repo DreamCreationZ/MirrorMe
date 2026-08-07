@@ -52,7 +52,7 @@ export default function SubscribePage() {
   }, [router]);
 
   const active = useMemo(() => (billing ? hasActiveSubscription(billing) : false), [billing]);
-  const continuePath = active ? readyPath : "/try-on";
+  const continuePath = active ? readyPath : "/welcome";
 
   async function activatePlan() {
     if (!userId) return;
