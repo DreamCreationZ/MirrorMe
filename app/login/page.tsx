@@ -1,21 +1,48 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getCurrentUser, login, logout, signup, waitForAuthInit } from "@/lib/auth";
-import { loadProfile, saveProfile } from "@/lib/persistence";
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { APP_ROUTES } from "@/core/routing/routes";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import {
+  getCurrentUser,
+  login,
+  loginWithApple,
+  loginWithGoogle,
+  logout,
+  requestPasswordReset,
+  signup,
+  waitForAuthInit,
+  type AuthUser
+} from "@/lib/auth";
+import { loadProfile, saveProfileLocal, syncProfileToCloud } from "@/lib/persistence";
+import { missingSignupFields } from "@/lib/profile-requirements";
 import { hasActiveSubscription, loadBilling } from "@/lib/subscription";
 import { COUNTRY_OPTIONS } from "@/lib/location";
-import { UserProfile } from "@/types/models";
+import type { UserProfile } from "@/models";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export default function LoginPage() {
+const SKIN_TONE_OPTIONS = [
+  "Very fair",
+  "Fair",
+  "Light medium",
+  "Medium",
+  "Olive",
+  "Tan",
+  "Deep",
+  "Dark"
+] as const;
+
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
+  const [age, setAge] = useState(24);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [heightCm, setHeightCm] = useState(165);
@@ -25,9 +52,20 @@ export default function LoginPage() {
   const [country, setCountry] = useState("");
   const [phoneCountryCode, setPhoneCountryCode] = useState("+91");
   const [mobileNumber, setMobileNumber] = useState("");
+  const [profession, setProfession] = useState("");
+  const [styleGoals, setStyleGoals] = useState("");
   const [status, setStatus] = useState("");
   const [locationStatus, setLocationStatus] = useState("");
   const [activeSessionName, setActiveSessionName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [socialBusy, setSocialBusy] = useState<"" | "google" | "apple">("");
+  const locationLookupIdRef = useRef(0);
+
+  const safeNextPath = (() => {
+    const next = searchParams.get("next");
+    if (!next || !next.startsWith("/") || next.startsWith("//")) return "";
+    return next;
+  })();
 
   useEffect(() => {
     waitForAuthInit().then(async (session) => {
@@ -38,17 +76,28 @@ export default function LoginPage() {
 
   const detectLocationFromPincode = useCallback(async () => {
     const normalized = pincode.trim();
-    if (normalized.length < 4) return;
+    if (normalized.length < 4) {
+      setLocationStatus("");
+      return;
+    }
+
+    const requestId = ++locationLookupIdRef.current;
+    const selectedCountryIso = COUNTRY_OPTIONS.find((item) => item.name === country)?.iso || "";
+    const params = new URLSearchParams({ pincode: normalized });
+    if (selectedCountryIso) {
+      params.set("country", selectedCountryIso);
+    }
 
     setLocationStatus("Detecting country and state from pincode...");
     try {
-      const res = await fetch(`/api/location/pincode?pincode=${encodeURIComponent(normalized)}`);
+      const res = await fetch(`/api/location/pincode?${params.toString()}`);
       const data = (await res.json()) as {
         state?: string;
         countryName?: string;
         phoneCountryCode?: string;
         found?: boolean;
       };
+      if (requestId !== locationLookupIdRef.current) return;
       if (data?.found) {
         if (data.state) setStateName(data.state);
         if (data.countryName) setCountry(data.countryName);
@@ -58,9 +107,10 @@ export default function LoginPage() {
         setLocationStatus("Could not detect location from pincode. Please enter country/state manually.");
       }
     } catch {
+      if (requestId !== locationLookupIdRef.current) return;
       setLocationStatus("Could not detect location from pincode. Please enter country/state manually.");
     }
-  }, [pincode]);
+  }, [country, pincode]);
 
   useEffect(() => {
     if (mode !== "signup") return;
@@ -72,17 +122,57 @@ export default function LoginPage() {
     return () => clearTimeout(timer);
   }, [detectLocationFromPincode, mode, pincode]);
 
+  async function resolveNextRoute(user: AuthUser) {
+    const profile = await loadProfile(user.id);
+    if (!profile) {
+      return APP_ROUTES.onboarding;
+    }
+    const billing = await loadBilling(user.id);
+    if (!hasActiveSubscription(billing)) {
+      return APP_ROUTES.subscribe;
+    }
+    return profile.frontImageUrl ? APP_ROUTES.occasion : APP_ROUTES.welcome;
+  }
+
+  function routeAfterAuth(fallback: string) {
+    if (safeNextPath && safeNextPath !== APP_ROUTES.login) {
+      return safeNextPath;
+    }
+    return fallback;
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setStatus("");
+    setBusy(true);
 
     try {
+      if (mode === "signup") {
+        const missing = missingSignupFields({
+          name: name.trim(),
+          age: Number(age),
+          heightCm: Number(heightCm),
+          skinTone: skinTone.trim(),
+          country: country.trim(),
+          state: stateName.trim(),
+          pincode: pincode.trim(),
+          phoneCountryCode: phoneCountryCode.trim(),
+          mobileNumber: mobileNumber.trim(),
+          profession: profession.trim(),
+          styleGoals: styleGoals.trim()
+        });
+        if (missing.length) {
+          setStatus(`Please fill all required fields before creating account: ${missing.join(", ")}.`);
+          return;
+        }
+      }
+
       const user = mode === "signup" ? await signup(name, email, password) : await login(email, password);
       if (mode === "signup") {
         const payload: UserProfile = {
           id: uid(),
           name: name.trim(),
-          age: 24,
+          age: Number(age) || 24,
           heightCm: Number(heightCm) || 165,
           skinTone: skinTone.trim(),
           frontImageUrl: "",
@@ -91,58 +181,99 @@ export default function LoginPage() {
           pincode: pincode.trim(),
           phoneCountryCode: phoneCountryCode.trim(),
           mobileNumber: mobileNumber.trim(),
-          profession: "Not set",
-          styleGoals: "Not set",
+          profession: profession.trim(),
+          styleGoals: styleGoals.trim(),
           notes: "",
           createdAt: Date.now()
         };
-        await saveProfile(user.id, payload);
-      }
-      const profile = await loadProfile(user.id);
-      if (!profile) {
-        router.push("/onboarding");
+        saveProfileLocal(user.id, payload);
+        void syncProfileToCloud(user.id, payload).catch(() => undefined);
+        router.push(routeAfterAuth(APP_ROUTES.subscribe));
         return;
       }
-      const billing = await loadBilling(user.id);
-      if (!hasActiveSubscription(billing)) {
-        router.push("/subscribe");
-        return;
-      }
-      router.push(profile.frontImageUrl ? "/occasion" : "/welcome");
+      const nextRoute = await resolveNextRoute(user);
+      router.push(routeAfterAuth(nextRoute));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Authentication failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSocialLogin(provider: "google" | "apple") {
+    setStatus("");
+    setSocialBusy(provider);
+    try {
+      const user = provider === "google" ? await loginWithGoogle() : await loginWithApple();
+      const nextRoute = await resolveNextRoute(user);
+      router.push(routeAfterAuth(nextRoute));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Social login failed.");
+    } finally {
+      setSocialBusy("");
+    }
+  }
+
+  async function onForgotPassword() {
+    setStatus("");
+    try {
+      await requestPasswordReset(email);
+      setStatus("Password reset link sent. Check your inbox.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to send reset link.");
     }
   }
 
   return (
-    <section className="card phone-single" style={{ maxWidth: 560, margin: "0 auto" }}>
+    <Card as="section" variant="premium" className="phone-single auth-shell">
       <h1>{mode === "login" ? "Log In" : "Create Account"}</h1>
       <p className="small">Login is required to keep profile, closet, and stylist memory per user.</p>
+      {safeNextPath ? <p className="small">After login, you will continue to: <strong>{safeNextPath}</strong></p> : null}
       {activeSessionName ? (
-        <div style={{ marginBottom: 12 }}>
+        <div className="stack-sm">
           <p className="small">Currently signed in as {activeSessionName}. You can continue, sign out, or switch account below.</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="secondary" onClick={() => router.push("/occasion")}>
+          <div className="action-row">
+            <Button type="button" variant="secondary" onClick={() => router.push(APP_ROUTES.occasion)}>
               Continue
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="secondary"
+              variant="secondary"
               onClick={async () => {
                 await logout();
                 setActiveSessionName("");
                 setStatus("Signed out. You can now log in with another account.");
               }}
+              disabled={busy || Boolean(socialBusy)}
             >
               Sign Out
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <button className={mode === "login" ? "" : "secondary"} onClick={() => setMode("login")} type="button">Log In</button>
-        <button className={mode === "signup" ? "" : "secondary"} onClick={() => setMode("signup")} type="button">Sign Up</button>
+      <div className="action-row">
+        <Button variant={mode === "login" ? "gradient" : "secondary"} onClick={() => setMode("login")} type="button">Log In</Button>
+        <Button variant={mode === "signup" ? "gradient" : "secondary"} onClick={() => setMode("signup")} type="button">Sign Up</Button>
+      </div>
+
+      <div className="action-row">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => void onSocialLogin("google")}
+          disabled={busy || Boolean(socialBusy)}
+        >
+          {socialBusy === "google" ? "Connecting Google..." : "Continue with Google"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => void onSocialLogin("apple")}
+          disabled={busy || Boolean(socialBusy)}
+        >
+          {socialBusy === "apple" ? "Connecting Apple..." : "Continue with Apple"}
+        </Button>
       </div>
 
       <form onSubmit={onSubmit} className="grid">
@@ -153,10 +284,23 @@ export default function LoginPage() {
               <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} required />
             </label>
             <label>
+              Age
+              <input
+                type="number"
+                min={13}
+                max={120}
+                value={age}
+                onChange={(e) => setAge(Number(e.target.value))}
+                className="auth-input"
+                required
+              />
+            </label>
+            <label>
               Height (cm)
               <input
                 type="number"
                 min={100}
+                max={250}
                 value={heightCm}
                 onChange={(e) => setHeightCm(Number(e.target.value))}
                 className="auth-input"
@@ -165,7 +309,14 @@ export default function LoginPage() {
             </label>
             <label>
               Color / Skin tone
-              <input className="auth-input" value={skinTone} onChange={(e) => setSkinTone(e.target.value)} required />
+              <select className="auth-input" value={skinTone} onChange={(e) => setSkinTone(e.target.value)} required>
+                <option value="">Select skin tone</option>
+                {SKIN_TONE_OPTIONS.map((tone) => (
+                  <option key={tone} value={tone}>
+                    {tone}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Country
@@ -199,7 +350,7 @@ export default function LoginPage() {
                 inputMode="numeric"
                 pattern="[0-9A-Za-z -]{4,12}"
                 value={pincode}
-                onChange={(e) => setPincode(e.target.value)}
+                onChange={(e) => setPincode(e.target.value.replace(/[^0-9A-Za-z -]/g, ""))}
                 onBlur={detectLocationFromPincode}
                 required
               />
@@ -226,6 +377,20 @@ export default function LoginPage() {
                 required
               />
             </label>
+            <label>
+              Profession
+              <input className="auth-input" value={profession} onChange={(e) => setProfession(e.target.value)} required />
+            </label>
+            <label>
+              Style goals
+              <input
+                className="auth-input"
+                placeholder="ex: elegant, minimal, streetwear"
+                value={styleGoals}
+                onChange={(e) => setStyleGoals(e.target.value)}
+                required
+              />
+            </label>
             {locationStatus ? <p className="small">{locationStatus}</p> : null}
           </>
         ) : null}
@@ -240,10 +405,31 @@ export default function LoginPage() {
           <input className="auth-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={4} />
         </label>
 
-        <button type="submit">{mode === "login" ? "Log In" : "Create and Continue"}</button>
+        {mode === "login" ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void onForgotPassword()}
+            disabled={busy || Boolean(socialBusy)}
+          >
+            Forgot Password
+          </Button>
+        ) : null}
+
+        <Button type="submit" variant="gradient" disabled={busy || Boolean(socialBusy)}>
+          {busy ? "Please wait..." : mode === "login" ? "Log In" : "Create and Continue"}
+        </Button>
       </form>
 
       {status ? <p className="small text-bad">{status}</p> : null}
-    </section>
+    </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<Card as="section" variant="premium" className="phone-single auth-shell">Loading login...</Card>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
